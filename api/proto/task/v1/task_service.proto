@@ -1,0 +1,3 @@
+// Указывает версию Protocol Buffers. syntax = "proto3" означает использование
+syntax = "proto3";
+

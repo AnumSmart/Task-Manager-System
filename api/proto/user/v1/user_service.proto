@@ -1,0 +1,412 @@
+// Указывает версию Protocol Buffers. syntax = "proto3" означает использование
+syntax = "proto3";
+
+// Определяет пространство имен пакета для protobuf. Это имя будет использоваться
+// в сгенерированном коде как префикс для всех сообщений и сервисов.
+// Позволяет избежать конфликтов имен между разными .proto файлами
+package user.v1;
+
+// Указывает Go package path для сгенерированного кода.
+// Все сгенерированные .pb.go файлы будут иметь package user_service_v1, но физически
+// расположены в директории task_managenemt_system_v_1_20/api/gen/go/user/v1
+// Это позволяет импортировать пакет в Go как: import "user_v1"
+option go_package = "api/gen/go/user/v1;user_v1";
+
+import "proto/common/v1/types.proto";
+
+// Определение gRPC сервиса. Это контракт между клиентом и сервером.
+// Сервис UserService предоставляет методы для взаимодействия
+service UserService {
+    // ==================== Инициализация системы (однократно) ====================
+    rpc SetupInitialOrganization(SetupInitialOrganizationRequest) returns (SetupInitialOrganizationResponse);  // Вызывается при первом запуске для создания организации и владельца
+    rpc GetOrganization(GetOrganizationRequest) returns (GetOrganizationResponse); // Всегда возвращает одну и ту же организацию (id известен системе)
+
+    // ==================== Управление пользователями (CRUD) ====================
+
+    // CreateUser - создание нового пользователя в организации
+    // Только пользователи с ролью OWNER или MANAGER могут создавать новых пользователей
+    rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+    // GetUser - получение информации о пользователе по ID
+    // Доступна всем авторизованным пользователям (но разные роли видят разный набор полей)
+    rpc GetUser(GetUserRequest) returns (GetUserResponse);
+    // UpdateUser - обновление данных пользователя
+    // OWNER может менять любые поля, MANAGER - только некоторые, EMPLOYEE - только свой профиль
+    rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse);
+    // DeleteUser - удаление или деактивация пользователя
+    // Только OWNER может удалять пользователей (soft delete рекомендуется)
+    rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
+    // ListUsers - получение списка пользователей с фильтрацией и пагинацией
+    // Доступно для OWNER и MANAGER, EMPLOYEE видит только себя
+    rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+    
+    // ==================== Для telegram-bot ====================
+    // LinkTelegram - привязка Telegram аккаунта к существующему пользователю
+    // Пользователь вводит свой email в боте, после чего происходит привязка
+    rpc LinkTelegram(LinkTelegramRequest) returns (LinkTelegramResponse);
+    // GetUserByTelegram - поиск пользователя по Telegram ID
+    // Используется ботом для идентификации пользователя при каждом запросе
+    rpc GetUserByTelegram(GetUserByTelegramRequest) returns (GetUserResponse);
+    // GetMyProfile - получение своего профиля по Telegram ID
+    // Удобный метод для бота, чтобы не хранить user_id на клиенте
+    rpc GetMyProfile(GetMyProfileRequest) returns (GetUserResponse);
+    
+    // ==================== Для task-service ====================
+    // ValidateUser - комплексная проверка пользователя перед назначением задачи
+    // Проверяет существование, активность и соответствие ролям
+    rpc ValidateUser(ValidateUserRequest) returns (ValidateUserResponse);
+    // CheckUserExists - быстрая проверка существования пользователя
+    // Используется для валидации перед созданием задачи
+    rpc CheckUserExists(CheckUserExistsRequest) returns (CheckUserExistsResponse);
+    // GetUserByID - получение пользователя по ID (алиас для GetUser)
+    // Выделен в отдельный метод для task-service для чёткого разделения ответственности
+    rpc GetUserByID(GetUserByIDRequest) returns (GetUserResponse);
+    // BatchGetUsers - массовое получение пользователей
+    // Оптимизация: вместо N вызовов GetUser - один вызов BatchGetUsers
+    rpc BatchGetUsers(BatchGetUsersRequest) returns (BatchGetUsersResponse);
+    
+    // ==================== Для analytics-service ====================
+    // GetAllUsers - получение всех пользователей (без пагинации)
+    // Используется аналитикой для построения полных отчётов
+    rpc GetAllUsers(GetAllUsersRequest) returns (GetAllUsersResponse);
+    // GetUsersByRole - получение пользователей с определённой ролью
+    // Например: "показать всех MANAGER'ов для назначения"
+    rpc GetUsersByRole(GetUsersByRoleRequest) returns (GetUsersByRoleResponse);
+    // GetUserRole - быстрый метод получения только роли пользователя
+    // Легче, чем полный GetUser, когда нужна только роль
+    rpc GetUserRole(GetUserRoleRequest) returns (GetUserRoleResponse);
+}
+
+// ==================== Инициализация и организация ====================
+message SetupInitialOrganizationRequest {
+    string request_id = 1; // Уникальный идентификатор запроса для трейсинга и дебаггинга (UUID)
+    string organization_name = 2; // Название организации (компании)
+    string owner_email = 3; // Email владельца организации (будет использоваться для входа)
+    string owner_password = 4; // Пароль владельца (будет сохранён в хэшированном виде)
+    string owner_full_name = 5; // Полное имя владельца для отображения в интерфейсе
+}
+
+message SetupInitialOrganizationResponse {
+    bool success = 1; // Флаг успешности операции (true - организация и владелец созданы, false - произошла ошибка)
+    common.v1.Organization organization = 2; // Созданная организация (заполнено только при success = true)
+    common.v1.User owner = 3; // Созданный пользователь-владелец (заполнено только при success = true)
+    string message = 4; // Cообщение для пользователя
+    string error_message = 5; // Сообщение об ошибке (заполнено только при success = false)
+}
+
+message GetOrganizationRequest {
+    string request_id = 1; // Уникальный идентификатор запроса для трейсинга
+                                                            // Поле organization_id отсутствует, т.к. организация в системе одна
+                                                            // Система сама знает ID единственной организации
+}
+
+message GetOrganizationResponse {
+    bool success = 1; // Флаг успешности операции
+    common.v1.Organization organization = 2; // Объект организации (заполнен при success = true)
+    string error_message = 3; // Сообщение об ошибке (при success = false)
+}
+
+message CreateUserRequest {
+    string request_id = 1; // Уникальный идентификатор запроса для трейсинга
+    string email = 2; // Email нового пользователя (должен быть уникальным). Используется для входа и привязки Telegram
+    string password = 3; // Пароль нового пользователя (будет хэширован)
+    common.v1.Role role = 4; // Роль пользователя в системе (OWNER, MANAGER, EMPLOYEE)
+    string full_name = 5; // Полное имя пользователя для отображения
+    optional int64 telegram_id = 6;                         // Telegram ID для автоматической привязки (опционально)
+}
+
+message CreateUserResponse {
+    bool success = 1; // Флаг успешности операции
+    common.v1.User user = 2; // Созданный пользователь (без пароля)
+    string error_message = 3; // Сообщение об ошибке (при success = false)
+}
+
+message GetUserRequest {
+    string request_id = 1; // Уникальный идентификатор запроса для трейсинга
+    string user_id = 2; // UUID пользователя в формате string
+}
+
+message GetUserResponse {
+    bool success = 1; // Флаг успешности операции
+    common.v1.User user = 2; // Объект пользователя (заполнен при success = true)
+    string error_message = 3; // Сообщение об ошибке (при success = false)
+}
+
+message UpdateUserRequest {
+    string request_id = 1; // Уникальный идентификатор запроса для трейсинга
+    string user_id = 2; // ID пользователя, данные которого обновляются
+    optional string email = 3;                              // Новый email (опционально), Только OWNER может менять email другого пользователя
+    optional common.v1.Role role = 4;                       // Новая роль (опционально), Только OWNER может менять роли
+    optional string full_name = 5;                          // Новое полное имя (опционально), Пользователь может менять своё имя, MANAGER/OWNER - чужое
+    optional common.v1.UserStatus status = 6;               // Новый статус пользователя (опционально), Только OWNER может менять статус
+}
+
+message UpdateUserResponse {
+    bool success = 1; // Флаг успешности операции
+    common.v1.User user = 2; // Обновлённый объект пользователя (заполнен при success = true)
+    string error_message = 3; // Сообщение об ошибке (при success = false)
+}
+
+message DeleteUserRequest {
+    string request_id = 1; // Уникальный идентификатор запроса для трейсинга
+    string user_id = 2; // ID пользователя для удаления
+    // Флаг мягкого удаления
+    // true - пользователь деактивируется (status = INACTIVE)
+    // false - пользователь полностью удаляется из БД (не рекомендуется)
+    // Только OWNER может удалять пользователей
+    // Нельзя удалить самого себя
+    bool soft_delete = 3;
+}
+
+message DeleteUserResponse {
+    bool success = 1; // Флаг успешности операции
+    string error_message = 2; // Сообщение об ошибке (при success = false)
+}
+
+message ListUsersRequest {  
+    string request_id = 1; // Уникальный идентификатор запроса для трейсинга
+    optional common.v1.Role role = 2;                       // Фильтр по роли (опционально), Если указан, возвращаются только пользователи с этой ролью
+    optional common.v1.UserStatus status = 3;               // Фильтр по статусу (опционально), Если указан, возвращаются только пользователи с этим статусом
+    int32 page = 4; // Номер страницы (начинается с 1)
+    // Размер страницы (количество записей на страницу)
+    // Максимальное значение: 100, минимальное: 1
+    // Рекомендуемое значение: 20-50 для оптимальной производительности
+    int32 page_size = 5;
+}
+
+message ListUsersResponse {
+    bool success = 1; // Флаг успешности операции
+    repeated common.v1.User users = 2; // Список пользователей на текущей странице
+    // Объект пагинации с мета-информацией
+    // Содержит номер страницы, размер, общее количество и количество страниц
+    common.v1.Pagination pagination = 3;
+    string error_message = 4; // Сообщение об ошибке (при success = false)
+}
+
+// ==================== Для telegram-bot ====================
+
+message LinkTelegramRequest {
+    string request_id = 1; // Уникальный идентификатор запроса для трейсинга
+    // Email пользователя для идентификации в системе
+    // Пользователь вводит email в Telegram боте
+    // Должен соответствовать существующему пользователю
+    string email = 2;
+    
+    // Telegram ID пользователя (число, получается от Bot API)
+    // Пример: 123456789
+    // Должен быть уникальным в системе
+    int64 telegram_id = 3;
+    
+    // Telegram username (опционально, для информации)
+    // Пример: "@ivan_petrov"
+    // Используется для отображения в интерфейсе
+    string telegram_username = 4;
+}
+
+message LinkTelegramResponse {
+    // Флаг успешности операции
+    bool success = 1;
+    
+    // Сообщение для пользователя
+    // Пример: "Telegram аккаунт @ivan_petrov привязан к пользователю ivan@romashka.ru"
+    string message = 2;
+    
+    // Обновлённый объект пользователя (с заполненным telegram_id)
+    common.v1.User user = 3;
+    
+    // Сообщение об ошибке (при success = false)
+    // Примеры: "User not found", "Telegram ID already linked to another user"
+    string error_message = 4;
+}
+
+message GetUserByTelegramRequest {
+    // Уникальный идентификатор запроса для трейсинга
+    string request_id = 1;
+    
+    // Telegram ID для поиска пользователя
+    // Получается из сообщения в боте
+    int64 telegram_id = 2;
+}
+
+message GetMyProfileRequest {
+    // Уникальный идентификатор запроса для трейсинга
+    string request_id = 1;
+    
+    // Telegram ID текущего пользователя
+    // Используется для поиска своего профиля
+    int64 telegram_id = 2;
+}
+
+// ==================== Для task-service ====================
+
+message ValidateUserRequest {
+    // Уникальный идентификатор запроса для трейсинга
+    string request_id = 1;
+    
+    // ID пользователя для валидации
+    string user_id = 2;
+    
+    // Список разрешённых ролей для текущей операции
+    // Пример: [ROLE_MANAGER, ROLE_EMPLOYEE] - проверяем, что пользователь менеджер или сотрудник
+    // Если список пуст - проверяется только существование и активность
+    repeated common.v1.Role allowed_roles = 3;
+}
+
+message ValidateUserResponse {
+    // Флаг успешности операции (сам RPC вызов)
+    bool success = 1;
+    
+    // Флаг валидности пользователя (результат проверки)
+    // true - пользователь существует, активен и имеет разрешённую роль
+    bool is_valid = 2;
+    
+    // Объект пользователя (заполнен если is_valid = true)
+    // Возвращается для удобства, чтобы не делать дополнительный вызов GetUser
+    common.v1.User user = 3;
+    
+    // Текст ошибки валидации (заполнен если is_valid = false)
+    // Примеры: "User not found", "User is inactive", "Invalid role: expected MANAGER or EMPLOYEE"
+    string validation_error = 4;
+}
+
+message CheckUserExistsRequest {
+    // Уникальный идентификатор запроса для трейсинга
+    string request_id = 1;
+    
+    // ID пользователя для проверки существования
+    string user_id = 2;
+}
+
+message CheckUserExistsResponse {
+    // Флаг успешности операции (сам RPC вызов)
+    bool success = 1;
+    
+    // Флаг существования пользователя в системе
+    bool exists = 2;
+    
+    // Флаг активности пользователя (актуален только если exists = true)
+    // false если статус INACTIVE или SUSPENDED
+    bool is_active = 3;
+    
+    // Сообщение об ошибке (при success = false)
+    string error_message = 4;
+}
+
+message GetUserByIDRequest {
+    // Уникальный идентификатор запроса для трейсинга
+    string request_id = 1;
+    
+    // ID пользователя для получения
+    string user_id = 2;
+}
+
+message BatchGetUsersRequest {
+    // Уникальный идентификатор запроса для трейсинга
+    string request_id = 1;
+    
+    // Список ID пользователей для массового получения
+    // Ограничение: максимум 100 ID за один запрос
+    // Пример: ["id1", "id2", "id3"]
+    repeated string user_ids = 2;
+}
+
+message BatchGetUsersResponse {
+    // Флаг успешности операции
+    bool success = 1;
+    
+    // Map "ID пользователя" -> "Объект пользователя"
+    // Включает только найденных пользователей
+    // Пример: {"id1": User{...}, "id2": User{...}}
+    map<string, common.v1.User> users = 2;
+    
+    // Список ID, которые не были найдены в системе
+    // Позволяет клиенту понять, какие пользователи отсутствуют
+    repeated string not_found_ids = 3;
+    
+    // Сообщение об ошибке (при success = false)
+    string error_message = 4;
+}
+
+// ==================== Для analytics-service ====================
+
+message GetAllUsersRequest {
+    // Уникальный идентификатор запроса для трейсинга
+    string request_id = 1;
+    
+    // Включать ли неактивных пользователей в результат
+    // true - возвращаются все пользователи (ACTIVE, INACTIVE, SUSPENDED)
+    // false - возвращаются только ACTIVE пользователи
+    bool include_inactive = 2;
+    
+    // Максимальное количество возвращаемых записей
+    // Используется для ограничения размера ответа
+    // Максимум: 1000, если не указано - 100
+    int32 limit = 3;
+    
+    // Смещение для пагинации (сколько записей пропустить)
+    // Используется вместе с limit для постраничного вывода
+    // Пример: limit=10, offset=20 → записи 21-30
+    int32 offset = 4;
+}
+
+message GetAllUsersResponse {
+    // Флаг успешности операции
+    bool success = 1;
+    
+    // Список пользователей (все или отфильтрованные по include_inactive)
+    repeated common.v1.User users = 2;
+    
+    // Общее количество пользователей (без учёта limit/offset)
+    // Используется для пагинации на клиенте
+    int32 total = 3;
+    
+    // Сообщение об ошибке (при success = false)
+    string error_message = 4;
+}
+
+message GetUsersByRoleRequest {
+    // Уникальный идентификатор запроса для трейсинга
+    string request_id = 1;
+    
+    // Роль для фильтрации (обязательное поле)
+    // Пример: ROLE_MANAGER - получить всех менеджеров
+    common.v1.Role role = 2;
+    
+    // Включать ли неактивных пользователей
+    // true - включаем INACTIVE и SUSPENDED, false - только ACTIVE
+    bool include_inactive = 3;
+}
+
+message GetUsersByRoleResponse {
+    // Флаг успешности операции
+    bool success = 1;
+    
+    // Список пользователей с указанной ролью
+    repeated common.v1.User users = 2;
+    
+    // Общее количество найденных пользователей
+    int32 total = 3;
+    
+    // Сообщение об ошибке (при success = false)
+    string error_message = 4;
+}
+
+message GetUserRoleRequest {
+    // Уникальный идентификатор запроса для трейсинга
+    string request_id = 1;
+    
+    // ID пользователя, чью роль нужно получить
+    string user_id = 2;
+}
+
+message GetUserRoleResponse {
+    // Флаг успешности операции
+    bool success = 1;
+    
+    // Роль пользователя (OWNER, MANAGER, EMPLOYEE)
+    // Заполнено только при success = true
+    common.v1.Role role = 2;
+    
+    // Сообщение об ошибке (при success = false)
+    // Примеры: "User not found", "Access denied"
+    string error_message = 3;
+}
