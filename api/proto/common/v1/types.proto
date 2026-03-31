@@ -1,0 +1,120 @@
+// Указывает версию Protocol Buffers. syntax = "proto3" означает использование
+syntax = "proto3";
+
+// Определяет пространство имен пакета для protobuf. Это имя будет использоваться
+// в сгенерированном коде как префикс для всех сообщений и сервисов.
+// Позволяет избежать конфликтов имен между разными .proto файлами
+package common.v1;
+
+// Указывает Go package path для сгенерированного кода.
+// Все сгенерированные .pb.go файлы будут иметь package common_v1, но физически
+// расположены в директории task_managenemt_system_v_1_20/api/gen/go/common/v1
+// Это позволяет импортировать пакет в Go как: import "common_v1"
+option go_package = "api/gen/go/common/v1;common_v1";
+
+import "google/protobuf/timestamp.proto";
+
+// ==================== Перечисления ====================
+
+enum Role {
+    ROLE_UNSPECIFIED = 0;
+    ROLE_OWNER = 1;
+    ROLE_MANAGER = 2;
+    ROLE_EMPLOYEE = 3;
+}
+
+enum UserStatus {
+    USER_STATUS_UNSPECIFIED = 0;
+    USER_STATUS_ACTIVE = 1;
+    USER_STATUS_INACTIVE = 2;
+    USER_STATUS_SUSPENDED = 3;
+}
+
+enum TaskStatus {
+    TASK_STATUS_UNSPECIFIED = 0;
+    TASK_STATUS_NEW = 1;
+    TASK_STATUS_ASSIGNED = 2;
+    TASK_STATUS_IN_PROGRESS = 3;
+    TASK_STATUS_REVIEW = 4;
+    TASK_STATUS_COMPLETED = 5;
+    TASK_STATUS_REJECTED = 6;
+    TASK_STATUS_OVERDUE = 7;
+}
+
+enum TaskPriority {
+    TASK_PRIORITY_UNSPECIFIED = 0;
+    TASK_PRIORITY_LOW = 1;
+    TASK_PRIORITY_MEDIUM = 2;
+    TASK_PRIORITY_HIGH = 3;
+    TASK_PRIORITY_URGENT = 4;
+}
+
+// ==================== Общие сообщения ====================
+
+message Organization {
+    string id = 1; // ID организации
+    string name = 2; // Название организации
+    bool is_active = 3; // Флаг, что создана
+    google.protobuf.Timestamp created_at = 4; // Время регистрации
+    google.protobuf.Timestamp updated_at = 5; // Время обновления
+    string owner_id = 6; // ID владельца (owner)
+}
+
+message User {  
+    string id = 1; // ID пользователя
+    string email = 2; // Email пользователя
+    optional int64 telegram_id = 3;                         // ID из телеграмм
+    optional string telegram_username = 4;                  // Имя (ник-нэйм) из телеграмм
+    Role role = 5; // Роль (OWNER, MANAGER, EMPLOYEE)
+    UserStatus status = 6; // Статус
+    string full_name = 7; // Полное имя
+    google.protobuf.Timestamp created_at = 8; // Время регистрации
+    google.protobuf.Timestamp updated_at = 9; // Время обновления
+    optional google.protobuf.Timestamp last_login_at = 10;  // Время полседнего логина
+}
+
+message Task {
+    string id = 1; // ID задачи
+    string title = 2; // Название задачи
+    string description = 3; // Описание задачи
+    string creator_id = 4; // ID создателя задачи
+    string assignee_id = 5; // ID, кому поручена задача
+    TaskStatus status = 6; // Статус задачи
+    TaskPriority priority = 7; // Приоритет задачи
+    google.protobuf.Timestamp deadline = 8; // Время дэдлайна
+    google.protobuf.Timestamp created_at = 9; // Время создания
+    google.protobuf.Timestamp updated_at = 10; // Время обновления
+    optional google.protobuf.Timestamp completed_at = 11;   // Время завершения
+}
+
+message Pagination {
+    int32 page = 1; // Текущая страница (начинается с 1)
+    int32 page_size = 2; // Количество записей на странице (limit)
+    int32 total = 3; // Общее количество записей во всей выборке
+    int32 total_pages = 4; // Общее количество страниц
+}
+
+// Стандартизированный формат ошибки для всех gRPC методов
+// Используется для возврата детальной информации об ошибках вместо
+// того, чтобы полагаться только на gRPC статус коды
+message ErrorResponse {
+    // Машинно-читаемый код ошибки для программной обработки
+    // Используется клиентом для определения типа ошибки и принятия решения
+    // Формат: SERVICE_ERROR_CATEGORY (например, "USER_NOT_FOUND", "INVALID_ROLE")
+    // Не должен меняться между версиями API (breaking change)
+    string code = 1;
+    
+    // Человеко-читаемое сообщение об ошибке
+    // Может быть показано пользователю напрямую
+    // Локализуется на стороне клиента (сервер возвращает на языке запроса)
+    // Пример: "Пользователь с указанным email не найден"
+    string message = 2;
+    
+    // Дополнительные детали ошибки для контекста
+    // Позволяет передавать структурированные данные без расширения схемы
+    // Примеры:
+    //   - для ошибки валидации: {"field": "email", "reason": "invalid format"}
+    //   - для ошибки дубликата: {"existing_id": "123", "conflict_field": "email"}
+    //   - для ошибки бизнес-логики: {"required_role": "MANAGER", "user_role": "EMPLOYEE"}
+    map<string, string> details = 3;
+}
