@@ -1,3 +1,30 @@
-// Указывает версию Protocol Buffers. syntax = "proto3" означает использование
 syntax = "proto3";
 
+package task.v1;
+
+option go_package = "api/gen/go/task/v1;task_v1";
+
+import "task_models.proto";
+import "task_requests.proto";
+
+service TaskService {
+    // CRUD операции
+    rpc CreateTask(CreateTaskRequest) returns (CreateTaskResponse);                                 // Создание задачи (Saga участвует)
+    rpc GetTask(GetTaskRequest) returns (GetTaskResponse);                                          // Получение задачи по ID
+    rpc UpdateTask(UpdateTaskRequest) returns (UpdateTaskResponse);                                 // Обновление задачи
+    rpc DeleteTask(DeleteTaskRequest) returns (DeleteTaskResponse);                                 // Удаление задачи (soft delete)
+    rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);                                    // Получение списка задач с фильтрацией
+    
+    // Управление статусами
+    rpc ChangeTaskStatus(ChangeTaskStatusRequest) returns (ChangeTaskStatusResponse);               // Изменение статуса задачи
+    rpc AssignTask(AssignTaskRequest) returns (AssignTaskResponse);                                 // Назначение исполнителя
+    rpc BulkUpdateStatus(BulkUpdateStatusRequest) returns (BulkUpdateStatusResponse);               // Массовое изменение статуса
+    
+    // Комментарии и вложения
+    rpc AddComment(AddCommentRequest) returns (AddCommentResponse);                                 // Добавление комментария
+    rpc GetTaskComments(GetTaskCommentsRequest) returns (GetTaskCommentsResponse);                  // Получение комментариев задачи
+    rpc AttachFile(AttachFileRequest) returns (AttachFileResponse);                                 // Прикрепление файла
+    rpc GetTaskHistory(GetTaskHistoryRequest) returns (GetTaskHistoryResponse);                     // Получение истории изменений задачи
+    
+   
+}

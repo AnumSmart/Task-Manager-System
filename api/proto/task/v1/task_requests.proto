@@ -1,0 +1,209 @@
+syntax = "proto3";
+
+package task.v1;
+
+option go_package = "api/gen/go/task/v1;task_v1";
+
+import "proto/common/v1/types.proto";
+import "proto/task/v1/task_models.proto";
+import "google/protobuf/timestamp.proto";
+
+// Create Task
+message CreateTaskRequest {
+    string request_id = 1;              // Уникальный идентификатор запроса для трейсинга
+    string organization_id = 2;         // ID организации
+    string title = 3;                   // Название задачи
+    string description = 4;             // Описание задачи
+    common.v1.TaskPriority priority = 5; // Приоритет
+    string assignee_id = 6;             // ID исполнителя (опционально, можно назначить сразу)
+    google.protobuf.Timestamp deadline = 7; // Дедлайн
+    repeated string tags = 8;           // Теги для поиска
+    string parent_task_id = 9;          // ID родительской задачи (для подзадач)
+    string created_by = 10;             // ID создателя (текущего пользователя)
+}
+
+message CreateTaskResponse {
+    bool success = 1;                   // Флаг успешности операции
+    common.v1.Task task = 2;            // Созданная задача
+    string error_message = 3;           // Сообщение об ошибке (при success = false)
+}
+
+// Get Task
+message GetTaskRequest {
+    string request_id = 1;              // Уникальный идентификатор запроса для трейсинга
+    string task_id = 2;                 // ID задачи
+    string user_id = 3;                 // ID текущего пользователя (для проверки прав)
+}
+
+message GetTaskResponse {
+    bool success = 1;                   // Флаг успешности операции
+    TaskExtended task = 2;              // Расширенный объект задачи (с комментариями, вложениями)
+    string error_message = 3;           // Сообщение об ошибке (при success = false)
+}
+
+// List Tasks
+message ListTasksRequest {
+    string request_id = 1;              // Уникальный идентификатор запроса для трейсинга
+    string organization_id = 2;         // ID организации
+    optional string user_id = 3;        // Фильтр по пользователю (создатель/исполнитель)
+    optional common.v1.TaskStatus status = 4; // Фильтр по статусу
+    optional common.v1.TaskPriority priority = 5; // Фильтр по приоритету
+    optional string assignee_id = 6;    // Фильтр по исполнителю
+    optional string creator_id = 7;     // Фильтр по создателю
+    optional string search = 8;         // Поиск по названию/описанию
+    repeated string tags = 9;           // Фильтр по тегам
+    optional google.protobuf.Timestamp deadline_from = 10; // Дедлайн от
+    optional google.protobuf.Timestamp deadline_to = 11;   // Дедлайн до
+    bool include_deleted = 12;          // Включить удалённые задачи
+    int32 page = 13;                    // Номер страницы (начиная с 1)
+    int32 page_size = 14;               // Размер страницы (макс 100)
+    string sort_by = 15;                // Поле для сортировки (created_at, deadline, priority)
+    string sort_order = 16;             // Порядок сортировки (ASC, DESC)
+}
+
+message ListTasksResponse {
+    bool success = 1;                   // Флаг успешности операции
+    repeated common.v1.Task tasks = 2;   // Список задач
+    common.v1.Pagination pagination = 3; // Информация о пагинации
+    string error_message = 4;           // Сообщение об ошибке (при success = false)
+}
+
+// Update Task
+message UpdateTaskRequest {
+    string request_id = 1;              // Уникальный идентификатор запроса для трейсинга
+    string task_id = 2;                 // ID задачи
+    optional string title = 3;          // Новое название
+    optional string description = 4;    // Новое описание
+    optional common.v1.TaskPriority priority = 5; // Новый приоритет
+    optional google.protobuf.Timestamp deadline = 6; // Новый дедлайн
+    repeated string tags = 7;           // Полное обновление тегов
+    string updated_by = 8;              // ID пользователя, выполняющего обновление
+}
+
+message UpdateTaskResponse {
+    bool success = 1;                   // Флаг успешности операции
+    common.v1.Task task = 2;            // Обновлённая задача
+    string error_message = 3;           // Сообщение об ошибке (при success = false)
+}
+
+// Delete Task
+message DeleteTaskRequest {
+    string request_id = 1;              // Уникальный идентификатор запроса для трейсинга
+    string task_id = 2;                 // ID задачи
+    string user_id = 3;                 // ID пользователя, удаляющего задачу
+    bool permanent = 4;                 // Полное удаление (только для owner)
+}
+
+message DeleteTaskResponse {
+    bool success = 1;                   // Флаг успешности операции
+    string error_message = 2;           // Сообщение об ошибке (при success = false)
+}
+
+// Change Status
+message ChangeTaskStatusRequest {
+    string request_id = 1;              // Уникальный идентификатор запроса для трейсинга
+    string task_id = 2;                 // ID задачи
+    common.v1.TaskStatus new_status = 3; // Новый статус
+    string user_id = 4;                 // ID пользователя, меняющего статус
+    optional string comment = 5;        // Комментарий к изменению статуса
+}
+
+message ChangeTaskStatusResponse {
+    bool success = 1;                   // Флаг успешности операции
+    common.v1.Task task = 2;            // Задача с обновлённым статусом
+    string error_message = 3;           // Сообщение об ошибке (при success = false)
+}
+
+// Assign Task
+message AssignTaskRequest {
+    string request_id = 1;              // Уникальный идентификатор запроса для трейсинга
+    string task_id = 2;                 // ID задачи
+    string assignee_id = 3;             // ID исполнителя
+    string assigned_by = 4;             // ID менеджера/owner, назначившего задачу
+}
+
+message AssignTaskResponse {
+    bool success = 1;                   // Флаг успешности операции
+    common.v1.Task task = 2;            // Задача с назначенным исполнителем
+    string error_message = 3;           // Сообщение об ошибке (при success = false)
+}
+
+// Bulk Update Status
+message BulkUpdateStatusRequest {
+    string request_id = 1;              // Уникальный идентификатор запроса для трейсинга
+    repeated string task_ids = 2;       // Список ID задач
+    common.v1.TaskStatus new_status = 3; // Новый статус
+    string user_id = 4;                 // ID пользователя
+    optional string comment = 5;        // Комментарий к изменению
+}
+
+message BulkUpdateStatusResponse {
+    bool success = 1;                   // Флаг успешности операции
+    int32 success_count = 2;            // Количество успешно обновлённых
+    int32 failed_count = 3;             // Количество неудачных
+    repeated string failed_task_ids = 4; // ID задач с ошибками
+    repeated string errors = 5;         // Тексты ошибок
+    string error_message = 6;           // Общее сообщение об ошибке (при success = false)
+}
+
+// Add Comment
+message AddCommentRequest {
+    string request_id = 1;              // Уникальный идентификатор запроса для трейсинга
+    string task_id = 2;                 // ID задачи
+    string user_id = 3;                 // ID пользователя
+    string content = 4;                 // Текст комментария
+    CommentType type = 5;               // Тип комментария (по умолчанию COMMENT_TYPE_TEXT)
+}
+
+message AddCommentResponse {
+    bool success = 1;                   // Флаг успешности операции
+    Comment comment = 2;                // Созданный комментарий
+    string error_message = 3;           // Сообщение об ошибке (при success = false)
+}
+
+// Get Task Comments
+message GetTaskCommentsRequest {
+    string request_id = 1;              // Уникальный идентификатор запроса для трейсинга
+    string task_id = 2;                 // ID задачи
+    int32 page = 3;                     // Номер страницы
+    int32 page_size = 4;                // Размер страницы
+}
+
+message GetTaskCommentsResponse {
+    bool success = 1;                   // Флаг успешности операции
+    repeated Comment comments = 2;      // Список комментариев
+    common.v1.Pagination pagination = 3; // Информация о пагинации
+    string error_message = 4;           // Сообщение об ошибке (при success = false)
+}
+
+// Attach File
+message AttachFileRequest {
+    string request_id = 1;              // Уникальный идентификатор запроса для трейсинга
+    string task_id = 2;                 // ID задачи
+    string file_name = 3;               // Имя файла
+    string file_url = 4;                // URL файла
+    int64 file_size = 5;                // Размер файла в байтах
+    string mime_type = 6;               // MIME тип файла
+    string uploaded_by = 7;             // ID пользователя, загрузившего файл
+}
+
+message AttachFileResponse {
+    bool success = 1;                   // Флаг успешности операции
+    Attachment attachment = 2;          // Прикреплённый файл
+    string error_message = 3;           // Сообщение об ошибке (при success = false)
+}
+
+// Get Task History
+message GetTaskHistoryRequest {
+    string request_id = 1;              // Уникальный идентификатор запроса для трейсинга
+    string task_id = 2;                 // ID задачи
+    int32 page = 3;                     // Номер страницы
+    int32 page_size = 4;                // Размер страницы
+}
+
+message GetTaskHistoryResponse {
+    bool success = 1;                   // Флаг успешности операции
+    repeated TaskHistory history = 2;   // История изменений
+    common.v1.Pagination pagination = 3; // Информация о пагинации
+    string error_message = 4;           // Сообщение об ошибке (при success = false)
+}
