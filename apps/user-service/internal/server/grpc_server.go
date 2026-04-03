@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	configs "pkg/config"
+	"user-service/internal/server/interceptors"
 	"user-service/internal/service"
 
 	"google.golang.org/grpc"
@@ -53,6 +54,15 @@ func (s *GRPCUserServer) Run() error {
 		grpc.KeepaliveParams(keepaliveParams),        // Добавляем проверки соединения
 		grpc.MaxRecvMsgSize(s.config.MaxRecvMsgSize), // Максимальный размер принимаемого сообщения - 10 МБ
 		grpc.MaxSendMsgSize(s.config.MaxSendMsgSize), // Максимальный размер отправляемого сообщения - тоже 10 МБ
+
+		// Chain объединяет несколько интерсепторов
+		grpc.ChainUnaryInterceptor(
+			interceptors.RecoveryInterceptor, // 1. Ловит паники из всех следующих
+			interceptors.LoggingInterceptor,  // 2. Логирует запрос
+			// сюда можно добавить другие интерсепторы:
+			// interceptors.AuthInterceptor,
+			// interceptors.RateLimitInterceptor,
+		),
 	)
 
 	// Регистрируем наш сервис - говорим: "Этот сервер умеет работать с ботом по таким-то правилам"

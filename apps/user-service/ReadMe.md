@@ -13,38 +13,45 @@
 
 ## Структура
 
+```
 user-service/
 ├── cmd/
-│ └── main.go # точка входа
+│ └── main.go                           # точка входа
 ├── internal/
-│ ├── domain/ # бизнес-сущности
-│ │ ├── organization.go # структура Organization
-│ │ ├── user.go # структура User
-│ │ ├── role.go # роли: owner, manager, employee
-│ │ └── errors.go # domain errors
-│ ├── repository/ # работа с БД
+│ ├── domain/                           # бизнес-сущности
+│ │ ├── organization.go                 # структура Organization
+│ │ ├── user.go                         # структура User
+│ │ ├── role.go                         # роли: owner, manager, employee
+│ │ └── errors.go                       # domain errors
+│ ├── repository/                       # работа с БД
 │ │ ├── organization_repository.go
 │ │ ├── user_repository.go
 │ │ └── postgres/
-│ │ ├── db.go # подключение, транзакции
+│ │ ├── db.go                           # подключение, транзакции
 │ │ ├── organization_repo_impl.go
 │ │ └── user_repo_impl.go
 │ ├── service/ # бизнес-логика
-│ │ ├── user_service.go # CRUD пользователей
-│ │ ├── auth_service.go # регистрация, логин, JWT
+│ │ ├── user_service.go                 # CRUD пользователей
+│ │ ├── auth_service.go                 # регистрация, логин, JWT
 │ │ ├── organization_service.go
-│ │ └── telegram_service.go # привязка Telegram
+│ │ └── telegram_service.go             # привязка Telegram
 │ ├── server/
-│ │ └── grpc_server.go # gRPC сервер
+│ │ ├── interseptors/                   # Интерсепторы
+│ │ |     ├── logging.go                # Интерсептор для логирования
+│ │ |     └── recovery.go               # Интерсептор для ловли паники
+│ │ ├── grpc_analytics_integration.go   # Реализация grpc методов для работы с аналитикой
+│ │ ├── grpc_organization.go            # Реализация grpc методов для работы с организацией
+│ │ ├── grpc_task_integration.go        # Реализация grpc методов для работы с задачами
+│ │ ├── grpc_telegram.go                # Реализация grpc методов для работы с телеграммом
+│ │ ├── grpc_user_crud.go               # Реализация grpc методов для раьботы с пользователем
+│ │ └── grpc_server.go                  # gRPC сервер
 │ └── config/
 │ └── config.go
-├── api/
-│ └── proto/
-│ └── user.proto # gRPC схема
 ├── Dockerfile
 ├── go.mod
 ├── go.sum
 └── .env
+```
 
 ## Модель данных
 
@@ -85,27 +92,32 @@ user-service/
 
 ```protobuf
 service UserService {
-    // Аутентификация
-    rpc Register(RegisterRequest) returns (RegisterResponse);
-    rpc Login(LoginRequest) returns (LoginResponse);
-    rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
+    // Интеграция с сервисом задач
+    rpc ValidateUser(ValidateUserRequest) returns (ValidateUserResponse);
+    rpc CheckUserExists(CheckUserExistsRequest) returns (CheckUserExistsResponse);
+    rpc GetUserByID(GetUserByIDRequest) returns (GetUserResponse);
+    rpc BatchGetUsers(BatchGetUsersRequest) returns (BatchGetUsersResponse);
 
-    // Пользователи
-    rpc GetUser(GetUserRequest) returns (User);
-    rpc GetUserByEmail(GetUserByEmailRequest) returns (User);
-    rpc GetUserByTelegramChatID(GetUserByTelegramChatIDRequest) returns (User);
-    rpc ListOrganizationUsers(ListOrganizationUsersRequest) returns (ListOrganizationUsersResponse);
-    rpc CreateUser(CreateUserRequest) returns (User);
-    rpc UpdateUser(UpdateUserRequest) returns (User);
+    // Пользователи (CRUD)
+    rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+    rpc GetUser(GetUserRequest) returns (GetUserResponse);
+    rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse);
     rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
+    rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
 
     // Telegram привязка
     rpc LinkTelegram(LinkTelegramRequest) returns (LinkTelegramResponse);
-    rpc GetTelegramChatID(GetTelegramChatIDRequest) returns (GetTelegramChatIDResponse);
+    rpc GetUserByTelegram(GetUserByTelegramRequest) returns (GetUserResponse);
+    rpc GetMyProfile(GetMyProfileRequest) returns (GetUserResponse);
+
+    // Аналитика
+    rpc GetAllUsers(GetAllUsersRequest) returns (GetAllUsersResponse);
+    rpc GetUsersByRole(GetUsersByRoleRequest) returns (GetUsersByRoleResponse);
+    rpc GetUserRole(GetUserRoleRequest returns (GetUserRoleResponse);
 
     // Организации
-    rpc GetOrganization(GetOrganizationRequest) returns (Organization);
-    rpc UpdateOrganization(UpdateOrganizationRequest) returns (Organization);
+    rpc GetOrganization(GetOrganizationRequest) returns (GetOrganizationResponse);
+    rpc SetupInitialOrganization(SetupInitialOrganizationRequest) returns (SetupInitialOrganizationResponse);
 }
 ```
 
