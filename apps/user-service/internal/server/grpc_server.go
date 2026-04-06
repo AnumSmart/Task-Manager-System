@@ -7,8 +7,8 @@ import (
 	"log"
 	"net"
 	configs "pkg/config"
+	"user-service/internal/server/handler"
 	"user-service/internal/server/interceptors"
-	"user-service/internal/service"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
@@ -16,15 +16,14 @@ import (
 )
 
 // структура grpc сервера для user-service
-type GRPCUserServer struct {
-	pb.UnimplementedUserServiceServer                              // Встраиваем для обратной совместимости
-	server                            *grpc.Server                 // Сам сервер, который слушает входящие подключения
-	config                            *configs.GRPCServerConfig    // конфиг grpc сервера
-	Handler                           service.UserServiceInterface // Бизнес-логика для сообщений (интерфейс из сервисного слоя)
+type GRPCUserServer struct { // Встраиваем для обратной совместимости
+	server  *grpc.Server               // Сам сервер, который слушает входящие подключения
+	config  *configs.GRPCServerConfig  // конфиг grpc сервера
+	Handler *handler.UserServerHandler // Бизнес-логика для сообщений (интерфейс из сервисного слоя)
 }
 
 // NewGRPCUserServer создает новый gRPC сервер (конструктор)
-func NewGRCPUserServer(conf *configs.GRPCServerConfig, handler service.UserServiceInterface) *GRPCUserServer {
+func NewGRCPUserServer(conf *configs.GRPCServerConfig, handler *handler.UserServerHandler) *GRPCUserServer {
 	return &GRPCUserServer{
 		Handler: handler,
 		config:  conf,
@@ -66,7 +65,7 @@ func (s *GRPCUserServer) Run() error {
 	)
 
 	// Регистрируем наш сервис - говорим: "Этот сервер умеет работать с ботом по таким-то правилам"
-	pb.RegisterUserServiceServer(s.server, s)
+	pb.RegisterUserServiceServer(s.server, s.Handler)
 
 	// Регистрируем reflection для инструментов отладки (grpcurl и т.д.)
 	reflection.Register(s.server)

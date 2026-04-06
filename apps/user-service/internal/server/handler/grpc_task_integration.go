@@ -1,4 +1,4 @@
-package server
+package handler
 
 import (
 	pb "api/gen/go/user/v1"
@@ -8,7 +8,7 @@ import (
 
 // ValidateUser - комплексная проверка пользователя перед назначением задачи
 // Проверяет существование, активность и соответствие ролям
-func (s *GRPCUserServer) ValidateUser(ctx context.Context, req *pb.ValidateUserRequest) (*pb.ValidateUserResponse, error) {
+func (s *UserServerHandler) ValidateUser(ctx context.Context, req *pb.ValidateUserRequest) (*pb.ValidateUserResponse, error) {
 	select {
 	case <-ctx.Done():
 		log.Printf("❌ Контекст отменён: %v", ctx.Err())
@@ -23,7 +23,7 @@ func (s *GRPCUserServer) ValidateUser(ctx context.Context, req *pb.ValidateUserR
 
 // CheckUserExists - быстрая проверка существования пользователя
 // Используется для валидации перед созданием задачи
-func (s *GRPCUserServer) CheckUserExists(ctx context.Context, req *pb.CheckUserExistsRequest) (*pb.CheckUserExistsResponse, error) {
+func (s *UserServerHandler) CheckUserExists(ctx context.Context, req *pb.CheckUserExistsRequest) (*pb.CheckUserExistsResponse, error) {
 	select {
 	case <-ctx.Done():
 		log.Printf("❌ Контекст отменён: %v", ctx.Err())
@@ -38,7 +38,7 @@ func (s *GRPCUserServer) CheckUserExists(ctx context.Context, req *pb.CheckUserE
 
 // GetUserByID - получение пользователя по ID (алиас для GetUser)
 // Выделен в отдельный метод для task-service для чёткого разделения ответственности
-func (s *GRPCUserServer) GetUserByID(ctx context.Context, req *pb.GetUserByIDRequest) (*pb.GetUserResponse, error) {
+func (s *UserServerHandler) GetUserByID(ctx context.Context, req *pb.GetUserByIDRequest) (*pb.GetUserResponse, error) {
 	select {
 	case <-ctx.Done():
 		log.Printf("❌ Контекст отменён: %v", ctx.Err())
@@ -53,7 +53,7 @@ func (s *GRPCUserServer) GetUserByID(ctx context.Context, req *pb.GetUserByIDReq
 
 // BatchGetUsers - массовое получение пользователей
 // Оптимизация: вместо N вызовов GetUser - один вызов BatchGetUsers
-func (s *GRPCUserServer) BatchGetUsers(ctx context.Context, req *pb.BatchGetUsersRequest) (*pb.BatchGetUsersResponse, error) {
+func (s *UserServerHandler) BatchGetUsers(ctx context.Context, req *pb.BatchGetUsersRequest) (*pb.BatchGetUsersResponse, error) {
 	select {
 	case <-ctx.Done():
 		log.Printf("❌ Контекст отменён: %v", ctx.Err())
