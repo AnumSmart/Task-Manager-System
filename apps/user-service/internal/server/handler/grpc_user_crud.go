@@ -1,4 +1,4 @@
-package server
+package handler
 
 import (
 	pb "api/gen/go/user/v1"
@@ -8,7 +8,7 @@ import (
 
 // CreateUser - создание нового пользователя в организации
 // Только пользователи с ролью OWNER или MANAGER могут создавать новых пользователей
-func (s *GRPCUserServer) CreateUser(ctx context.Context, req *pb.CreateUserRequest) (*pb.CreateUserResponse, error) {
+func (s *UserServerHandler) CreateUser(ctx context.Context, req *pb.CreateUserRequest) (*pb.CreateUserResponse, error) {
 	select {
 	case <-ctx.Done():
 		log.Printf("❌ Контекст отменён: %v", ctx.Err())
@@ -23,7 +23,7 @@ func (s *GRPCUserServer) CreateUser(ctx context.Context, req *pb.CreateUserReque
 
 // GetUser - получение информации о пользователе по ID
 // Доступна всем авторизованным пользователям (но разные роли видят разный набор полей)
-func (s *GRPCUserServer) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.GetUserResponse, error) {
+func (s *UserServerHandler) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.GetUserResponse, error) {
 	select {
 	case <-ctx.Done():
 		log.Printf("❌ Контекст отменён: %v", ctx.Err())
@@ -38,7 +38,7 @@ func (s *GRPCUserServer) GetUser(ctx context.Context, req *pb.GetUserRequest) (*
 
 // UpdateUser - обновление данных пользователя
 // OWNER может менять любые поля, MANAGER - только некоторые, EMPLOYEE - только свой профиль
-func (s *GRPCUserServer) UpdateUser(ctx context.Context, req *pb.UpdateUserRequest) (*pb.UpdateUserResponse, error) {
+func (s *UserServerHandler) UpdateUser(ctx context.Context, req *pb.UpdateUserRequest) (*pb.UpdateUserResponse, error) {
 	select {
 	case <-ctx.Done():
 		log.Printf("❌ Контекст отменён: %v", ctx.Err())
@@ -53,7 +53,7 @@ func (s *GRPCUserServer) UpdateUser(ctx context.Context, req *pb.UpdateUserReque
 
 // DeleteUser - удаление или деактивация пользователя
 // Только OWNER может удалять пользователей (soft delete рекомендуется)
-func (s *GRPCUserServer) DeleteUser(ctx context.Context, req *pb.DeleteUserRequest) (*pb.DeleteUserResponse, error) {
+func (s *UserServerHandler) DeleteUser(ctx context.Context, req *pb.DeleteUserRequest) (*pb.DeleteUserResponse, error) {
 	select {
 	case <-ctx.Done():
 		log.Printf("❌ Контекст отменён: %v", ctx.Err())
@@ -68,7 +68,7 @@ func (s *GRPCUserServer) DeleteUser(ctx context.Context, req *pb.DeleteUserReque
 
 // ListUsers - получение списка пользователей с фильтрацией и пагинацией
 // Доступно для OWNER и MANAGER, EMPLOYEE видит только себя
-func (s *GRPCUserServer) ListUsers(ctx context.Context, req *pb.ListUsersRequest) (*pb.ListUsersResponse, error) {
+func (s *UserServerHandler) ListUsers(ctx context.Context, req *pb.ListUsersRequest) (*pb.ListUsersResponse, error) {
 	select {
 	case <-ctx.Done():
 		log.Printf("❌ Контекст отменён: %v", ctx.Err())

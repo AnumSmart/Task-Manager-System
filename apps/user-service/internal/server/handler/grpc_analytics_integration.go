@@ -1,4 +1,4 @@
-package server
+package handler
 
 import (
 	pb "api/gen/go/user/v1"
@@ -8,7 +8,7 @@ import (
 
 // GetAllUsers - получение всех пользователей (без пагинации)
 // Используется аналитикой для построения полных отчётов
-func (s *GRPCUserServer) GetAllUsers(ctx context.Context, req *pb.GetAllUsersRequest) (*pb.GetAllUsersResponse, error) {
+func (s *UserServerHandler) GetAllUsers(ctx context.Context, req *pb.GetAllUsersRequest) (*pb.GetAllUsersResponse, error) {
 	select {
 	case <-ctx.Done():
 		log.Printf("❌ Контекст отменён: %v", ctx.Err())
@@ -23,7 +23,7 @@ func (s *GRPCUserServer) GetAllUsers(ctx context.Context, req *pb.GetAllUsersReq
 
 // GetUsersByRole - получение пользователей с определённой ролью
 // Например: "показать всех MANAGER'ов для назначения"
-func (s *GRPCUserServer) GetUsersByRole(ctx context.Context, req *pb.GetUsersByRoleRequest) (*pb.GetUsersByRoleResponse, error) {
+func (s *UserServerHandler) GetUsersByRole(ctx context.Context, req *pb.GetUsersByRoleRequest) (*pb.GetUsersByRoleResponse, error) {
 	select {
 	case <-ctx.Done():
 		log.Printf("❌ Контекст отменён: %v", ctx.Err())
@@ -38,7 +38,7 @@ func (s *GRPCUserServer) GetUsersByRole(ctx context.Context, req *pb.GetUsersByR
 
 // GetUserRole - быстрый метод получения только роли пользователя
 // Легче, чем полный GetUser, когда нужна только роль
-func (s *GRPCUserServer) GetUserRole(ctx context.Context, req *pb.GetUserRoleRequest) (*pb.GetUserRoleResponse, error) {
+func (s *UserServerHandler) GetUserRole(ctx context.Context, req *pb.GetUserRoleRequest) (*pb.GetUserRoleResponse, error) {
 	select {
 	case <-ctx.Done():
 		log.Printf("❌ Контекст отменён: %v", ctx.Err())

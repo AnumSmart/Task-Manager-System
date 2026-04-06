@@ -1,4 +1,4 @@
-package server
+package handler
 
 import (
 	pb "api/gen/go/user/v1"
@@ -8,7 +8,7 @@ import (
 
 // LinkTelegram - привязка Telegram аккаунта к существующему пользователю
 // Пользователь вводит свой email в боте, после чего происходит привязка
-func (s *GRPCUserServer) LinkTelegram(ctx context.Context, req *pb.LinkTelegramRequest) (*pb.LinkTelegramResponse, error) {
+func (s *UserServerHandler) LinkTelegram(ctx context.Context, req *pb.LinkTelegramRequest) (*pb.LinkTelegramResponse, error) {
 	select {
 	case <-ctx.Done():
 		log.Printf("❌ Контекст отменён: %v", ctx.Err())
@@ -23,7 +23,7 @@ func (s *GRPCUserServer) LinkTelegram(ctx context.Context, req *pb.LinkTelegramR
 
 // GetUserByTelegram - поиск пользователя по Telegram ID
 // Используется ботом для идентификации пользователя при каждом запросе
-func (s *GRPCUserServer) GetUserByTelegram(ctx context.Context, req *pb.GetUserByTelegramRequest) (*pb.GetUserResponse, error) {
+func (s *UserServerHandler) GetUserByTelegram(ctx context.Context, req *pb.GetUserByTelegramRequest) (*pb.GetUserResponse, error) {
 	select {
 	case <-ctx.Done():
 		log.Printf("❌ Контекст отменён: %v", ctx.Err())
@@ -38,7 +38,7 @@ func (s *GRPCUserServer) GetUserByTelegram(ctx context.Context, req *pb.GetUserB
 
 // GetMyProfile - получение своего профиля по Telegram ID
 // Удобный метод для бота, чтобы не хранить user_id на клиенте
-func (s *GRPCUserServer) GetMyProfile(ctx context.Context, req *pb.GetMyProfileRequest) (*pb.GetUserResponse, error) {
+func (s *UserServerHandler) GetMyProfile(ctx context.Context, req *pb.GetMyProfileRequest) (*pb.GetUserResponse, error) {
 	select {
 	case <-ctx.Done():
 		log.Printf("❌ Контекст отменён: %v", ctx.Err())
