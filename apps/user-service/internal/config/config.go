@@ -12,6 +12,7 @@ import (
 type UserServiceConfig struct {
 	GRPCServerConfig *configs.GRPCServerConfig
 	PostgresDBConfig *configs.PostgresDBConfig
+	RedisConf        *configs.RedisConfig
 }
 
 // путь к .env файлу
@@ -38,8 +39,15 @@ func LoadConfig() (*UserServiceConfig, error) {
 		return nil, fmt.Errorf("Error during loading config: %s\n", err.Error())
 	}
 
+	// загружаем данные из .env файла для redisConfig
+	redisConfig, err := configs.NewRedisConfigFromEnv()
+	if err != nil {
+		return nil, fmt.Errorf("Error during loading config: %s\n", err.Error())
+	}
+
 	return &UserServiceConfig{
 		GRPCServerConfig: grpcServerConfig,
 		PostgresDBConfig: postgresDBConfig,
+		RedisConf:        redisConfig,
 	}, nil
 }

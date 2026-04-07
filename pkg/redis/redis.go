@@ -14,7 +14,7 @@ type RedisRepository struct {
 	client *redis.Client
 }
 
-func NewRedisCacheRepository(cfg *configs.RedisConfig) (global_cache.Cache, error) {
+func NewRedisCacheRepository(ctx context.Context, cfg *configs.RedisConfig) (global_cache.Cache, error) {
 	// проверяем, что конфиг редиса не nil
 	if cfg == nil {
 		return nil, fmt.Errorf("Error in redis config")
@@ -27,7 +27,7 @@ func NewRedisCacheRepository(cfg *configs.RedisConfig) (global_cache.Cache, erro
 	client := redis.NewClient(redisOptions)
 
 	// Проверяем подключение
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.DialTimeout)
+	ctx, cancel := context.WithTimeout(ctx, cfg.DialTimeout)
 	defer cancel()
 
 	if err := client.Ping(ctx).Err(); err != nil {
