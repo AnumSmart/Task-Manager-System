@@ -99,3 +99,21 @@ func (s *GRPCUserServer) Shutdown(ctx context.Context) error {
 		return nil
 	}
 }
+
+// GetPort возвращает порт, на котором слушает сервер
+func (s *GRPCUserServer) GetPort() string {
+	return s.config.Port
+}
+
+// ForceStop принудительно останавливает сервер
+func (s *GRPCUserServer) ForceStop() {
+	if s.server != nil {
+		s.server.Stop()
+		log.Println("  → Server forcibly stopped")
+	}
+}
+
+// IsRunning проверяет, запущен ли сервер
+func (s *GRPCUserServer) IsRunning() bool {
+	return s.server != nil
+}
