@@ -16,11 +16,17 @@
 ```
 user-service/
 ├── cmd/
+│ ├── di_container.go                         # Создание DI контейнера
+│ ├── garce_shut_down.go                      # Описание функций gracefull shutdown
+│ ├── health_check.go                         # Описание функций health check
+│ ├── start_server.go                         # Описание функций запуска сервера
 │ └── main.go                                 # точка входа
 ├── internal/
 │ ├── converter/                              # конвертеры (grpc <---> домен)
 │ │ ├── user_converter.go                     # конвертер для пользователей
-│ │ ├── org_converter.go                      # конвертер для организации
+│ │ └── org_converter.go                      # конвертер для организации
+│ ├── deps/                                   # работа с зависимостями
+│ │ └── deps.go                               # описание DI контейнера
 │ ├── domain/                                 # бизнес-сущности
 │ │ ├── organization.go                       # структура Organization
 │ │ ├── user.go                               # структура User
@@ -45,6 +51,10 @@ user-service/
 │ │ |     ├── user.go
 │ │ |     └── service.go                      # Общее описание структуры сервиса
 │ │ ├── repository/                           # Слой репозитория (работа с БД)
+│ │ |     ├── cache.go                        # Репозиторий кэша
+│ │ |     ├── db_repo.go                      # Репозиторий БД
+│ │ |     ├── interfaces.go                   # Описание интерфейсов для сервисного слоя
+│ │ |     └── repository.go                   # Составной репозиторий (общий для сервиса)
 │ │ └── grpc_server.go                        # gRPC сервер
 │ └── config/
 │         └── config.go                       # Описание струкктуры конфига сервиса
@@ -53,7 +63,7 @@ user-service/
 ├── Dockerfile
 ├── go.mod
 ├── go.sum
-└── .env
+└── .env                                      # адреса .yml конфигов, конфиги DB и Redis
 ```
 
 ## Модель данных
