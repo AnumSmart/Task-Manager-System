@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"fmt"
 	"global_models/global_cache"
 )
@@ -28,4 +29,31 @@ func NewUserServiceCacheRepo(cache global_cache.Cache, prefix string) (*UserServ
 		cache:  cache,
 		prefix: prefix,
 	}, nil
+}
+
+// метод для получения значения из кэша по ключу
+func (r *UserServiceCacheRepository) Get(ctx context.Context, key string, dest interface{}) error {
+	// полный ключ с префиксом
+	//fullKey := r.prefix + ":" + key
+	// -------------------------- в разработке --------------------------
+
+	return nil
+}
+
+// метод для записи пары ключ-значения в кэш с TTL
+func (r *UserServiceCacheRepository) Set(ctx context.Context, key string, value interface{}, ttl int) error {
+	// полный ключ с префиксом
+	//fullKey := r.prefix + ":" + key
+	// -------------------------- в разработке --------------------------
+
+	return nil
+}
+
+// метод для удаления записи из кэша по ключу
+func (r *UserServiceCacheRepository) Delete(ctx context.Context, key string) error {
+	// полный ключ с префиксом
+	//fullKey := r.prefix + ":" + key
+	// -------------------------- в разработке --------------------------
+
+	return nil
 }
