@@ -70,3 +70,11 @@ func (db *UserServiceDBRepository) List(ctx context.Context, offset, limit int) 
 
 	return nil, nil
 }
+
+// метод для подсчёта количества пользователей
+func (db *UserServiceDBRepository) Count(ctx context.Context) (int, error) {
+
+	// -------------------------- в разработке --------------------------
+
+	return 0, nil
+}

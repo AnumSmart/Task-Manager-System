@@ -13,6 +13,7 @@ type UserDBRepository interface {
 	Delete(ctx context.Context, id string) error
 	GetByEmail(ctx context.Context, email string) (*domain.User, error)
 	List(ctx context.Context, offset, limit int) ([]*domain.User, error)
+	Count(ctx context.Context) (int, error)
 }
 
 type UserCacheRepository interface {
