@@ -17,7 +17,7 @@ type UserServiceConfig struct {
 
 // путь к .env файлу
 const (
-	envPath = "c:\\Users\\aliaksei.makarevich\\go\\task_management_system_v_1_20\\apps\\user-service\\.env"
+	envPath = "c:\\Son_Alex\\GO_projects\\task_management_system\\apps\\user-service\\.env"
 )
 
 // загружаем конфиг-данные из .env

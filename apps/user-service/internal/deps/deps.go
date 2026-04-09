@@ -47,6 +47,12 @@ type Container struct {
 
 // NewContainer создает контейнер
 func NewContainer(ctx context.Context, cfg *config.UserServiceConfig) (*Container, error) {
+	// пытаемся отловить панику
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("Panic inside DI container constructor: %v\n", r)
+		}
+	}()
 	// создаём начальный экземпляр контейнера, чтобы для его наполнения вызывать инициализацию зависимостей
 	c := &Container{
 		config:  cfg,
@@ -183,6 +189,8 @@ func (c *Container) initRepositories() error {
 	if err != nil || repo == nil {
 		return fmt.Errorf("failed to create user repository")
 	}
+	// если все успешно, то инициализируем в структуре контейнера
+	c.repo = repo
 
 	return nil
 }
