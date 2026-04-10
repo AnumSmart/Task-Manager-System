@@ -21,6 +21,7 @@ user-service/
 │ ├── health_check.go                         # Описание функций health check
 │ ├── start_server.go                         # Описание функций запуска сервера
 │ └── main.go                                 # точка входа
+├── migrations/                               # миграции для user-service
 ├── internal/
 │ ├── converter/                              # конвертеры (grpc <---> домен)
 │ │ ├── user_converter.go                     # конвертер для пользователей

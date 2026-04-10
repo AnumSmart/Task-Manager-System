@@ -27,20 +27,22 @@
 
 ## 📁 Структура проекта
 
+```
 task-management-system/
 ├── apps/ # микросервисы
-│ ├── telegram-bot/ # Telegram бот (интерфейс)
-│ ├── task-service/ # управление задачами
-│ ├── user-service/ # организации, пользователи
-│ ├── notification-service/ # уведомления
-│ └── analytics-service/ # аналитика
-├── pkg/ # общие библиотеки
-├── migrations/ # миграции БД (goose)
-├── api/proto/ # protobuf схемы
-├── deployments/ # Docker Compose
+│ ├── telegram-bot/                     # Telegram бот (интерфейс)
+│ ├── task-service/                     # управление задачами
+│ ├── user-service/                     # организации, пользователи
+│ ├── notification-service/             # уведомления
+│ └── analytics-service/                # аналитика
+├── pkg/                                # общие библиотеки
+├── api/proto/                          # protobuf схемы
+├── deployments/                        # Docker Compose
+├── bin/                                # бинарники, типа goose
 ├── Makefile
 ├── go.work
 └── README.md
+```
 
 ## 🚦 Статусы задач
 
