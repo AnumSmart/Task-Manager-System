@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"global_models/global_db"
 	"strings"
+	"time"
 	"user-service/internal/domain"
 
 	"github.com/jackc/pgconn"
+	"github.com/jackc/pgx/v4"
 )
 
 // создаём репозиторий базы данных для сервиса авторизации на базе адаптера к pgxpool
@@ -88,36 +90,211 @@ func (db *UserServiceDBRepository) Create(ctx context.Context, user *domain.User
 	return nil
 }
 
-// метод для получения пользователя по ID
+// метод для получения пользователя по ID (ID должен быть в формате uuid)
 func (db *UserServiceDBRepository) GetByID(ctx context.Context, id string) (*domain.User, error) {
+	// проверка на пустой id
+	if id == "" {
+		return nil, domain.ErrInvalidInput
+	}
 
-	// -------------------------- в разработке --------------------------
+	// создаём строку запроса
+	query := `
+					SELECT id, email, full_name, role, status, 
+    						organization_id, password_hash, 
+    						created_at, updated_at, last_login_at,
+    						telegram_id, telegram_username 
+					FROM users 
+					WHERE id = $1 AND deleted_at IS NULL
+					
+	`
 
-	return nil, nil
+	// создаём переменную КАК СТРУКТУРУ (не nil указатель)
+	var user domain.User
+
+	// делаем запрос в БД
+	err := db.Pool.QueryRow(ctx, query, id).Scan(
+		&user.ID,
+		&user.Email,
+		&user.FullName,
+		&user.Role,
+		&user.Status,
+		&user.OrganizationID,
+		&user.PasswordHash,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+		&user.LastLoginAt,
+		&user.TelegramID,
+		&user.TelegramUsername,
+	)
+
+	if err != nil {
+		// сравнение ошибки на ошибку отсутствия пользователя
+		if errors.Is(pgx.ErrNoRows, err) {
+			return nil, domain.ErrUserNotFound
+		}
+		// какая-то другая ошибка
+		return nil, fmt.Errorf("failed to get user by id %s: %w", id, err)
+	}
+
+	return &user, nil
 }
 
 // метод для обновления пользователя по ID
 func (db *UserServiceDBRepository) Update(ctx context.Context, user *domain.User) error {
+	// 1. Проверка пользователя на nil
+	if user == nil {
+		return domain.ErrInvalidInput
+	}
 
-	// -------------------------- в разработке --------------------------
+	// 2. Проверка ID (обязательно, чтобы знать какого пользователя обновлять)
+	if user.ID == "" {
+		return domain.ErrInvalidInput
+	}
+
+	// 3. Нормализация email
+	email := strings.TrimSpace(user.Email)
+	if email == "" {
+		return domain.ErrInvalidEmail
+	}
+	email = strings.ToLower(email)
+
+	user.Email = email
+
+	// 4. Обновляем timestamp
+	user.UpdatedAt = time.Now()
+
+	query := `
+						UPDATE users
+						SET
+									email = $1,
+									full_name = $2,
+									role = $3,
+									status = $4,
+									organization_id = $5,
+									password_hash = $6,
+									updated_at = $7,
+									last_login_at = $8,
+									telegram_id = $9,
+									telegram_username = $10
+						WHERE id = $11 WHERE id = $1 AND deleted_at IS NULL
+	`
+
+	//выполняем запрос в БД
+	result, err := db.Pool.Exec(ctx, query,
+		user.Email,
+		user.FullName,
+		user.Role,
+		user.Status,
+		user.OrganizationID,
+		user.PasswordHash,
+		user.UpdatedAt,
+		user.LastLoginAt,
+		user.TelegramID,
+		user.TelegramUsername,
+		user.ID,
+	)
+
+	if err != nil {
+		// создаём переменную, чтобы распознать коды ошибок базы данных
+		var pgxErr *pgconn.PgError
+		if errors.As(err, &pgxErr) {
+			switch pgxErr.Code {
+			case "23503": // foreign_key_violation
+				return domain.ErrOrganizationNotFound
+			case "23505": // unique_violation (если email уже существует у другого пользователя)
+				return domain.ErrUserAlreadyExists
+			}
+		}
+		return fmt.Errorf("failed to update user: %w", err)
+	}
+
+	// проверяем, что одновление действительно прошло
+	// result это уже реализация poolAdapter из pkg. (tag.RowsAffected())
+	if result == 0 {
+		return domain.ErrUserNotFound
+	}
 
 	return nil
 }
 
 // метод для удаления пользователя по ID
 func (db *UserServiceDBRepository) Delete(ctx context.Context, id string) error {
+	// проверка на пустой id
+	if id == "" {
+		return domain.ErrInvalidInput
+	}
 
-	// -------------------------- в разработке --------------------------
+	// создаём строку звпроса
+	query := `
+						UPDATE users SET deleted_at = $1, updated_at = $1 WHERE id = $2 AND deleted_at IS NULL
+	`
+	// делаем запрос в БД
+	result, err := db.Pool.Exec(ctx, query, time.Now(), id)
+
+	if err != nil {
+		return fmt.Errorf("failed to delete user: %w", err)
+	}
+
+	// проверяем, что одновление действительно прошло
+	// result это уже реализация poolAdapter из pkg. (tag.RowsAffected())
+	if result == 0 {
+		return domain.ErrUserNotFound
+	}
 
 	return nil
 }
 
 // метод для получения пользователя по Email
 func (db *UserServiceDBRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
+	// нормализация email перед записью в БД
+	email = strings.TrimSpace(email)
 
-	// -------------------------- в разработке --------------------------
+	// Защита от мусорных данных (хотя бизнес-валидация должна быть в сервисе)
+	if email == "" {
+		return nil, domain.ErrInvalidEmail
+	}
 
-	return nil, nil
+	// приведение к нижнему регистру
+	email = strings.ToLower(email)
+
+	// создаём переменную для результата
+	var user domain.User
+
+	// создаём строку звпроса к БД (с учётом, того что у нас организовано мягкое удаление)
+	query := `
+						SELECT 
+								id, email, full_name, role, status, 
+								organization_id, password_hash, 
+								created_at, updated_at, last_login_at,
+								telegram_id, telegram_username
+						FROM users
+						WHERE email = $1 and deleted_at IS NULL
+	`
+	// создаём запрос к БД
+	err := db.Pool.QueryRow(ctx, query, email).Scan(
+		&user.ID,
+		&user.Email,
+		&user.FullName,
+		&user.Role,
+		&user.Status,
+		&user.OrganizationID,
+		&user.PasswordHash,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+		&user.LastLoginAt,
+		&user.TelegramID,
+		&user.TelegramUsername,
+	)
+
+	if err != nil {
+		// проверка, что ошибка, это ошибка - отсутствия пользователя
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrUserNotFound
+		}
+		return nil, fmt.Errorf("failed to get user by email %s: %w", email, err)
+	}
+
+	return &user, nil
 }
 
 // метод для получения списка пользователей (задаётся оффсет и лимит)
