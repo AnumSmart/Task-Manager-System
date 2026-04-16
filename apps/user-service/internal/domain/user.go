@@ -64,7 +64,8 @@ type User struct {
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 	LastLoginAt      *time.Time
-	PasswordHash     string // Только для внутреннего использования, не отправляется в API
+	DeletedAt        *time.Time // ✅ указатель - может быть nil для активных пользователей
+	PasswordHash     string     // Только для внутреннего использования, не отправляется в API
 }
 
 // ==================== КОНСТРУКТОРЫ ====================
