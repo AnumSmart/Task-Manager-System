@@ -300,15 +300,88 @@ func (db *UserServiceDBRepository) GetByEmail(ctx context.Context, email string)
 // метод для получения списка пользователей (задаётся оффсет и лимит)
 func (db *UserServiceDBRepository) List(ctx context.Context, offset, limit int) ([]*domain.User, error) {
 
-	// -------------------------- в разработке --------------------------
+	query := `
+		SELECT 
+			id, 
+			email, 
+			telegram_id, 
+			telegram_username, 
+			role, 
+			status, 
+			full_name, 
+			organization_id, 
+			password_hash, 
+			created_at, 
+			updated_at, 
+			last_login_at,
+			deleted_at
+		FROM users
+		WHERE deleted_at IS NULL
+		ORDER BY created_at DESC
+		LIMIT $1 OFFSET $2
+	`
 
-	return nil, nil
+	rows, err := db.Pool.Query(ctx, query, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query users: %w", err)
+	}
+	// освобождаем ресурсы
+	defer rows.Close()
+
+	// созда
+	var users []*domain.User
+	for rows.Next() {
+		user := &domain.User{}
+		err := rows.Scan(
+			&user.ID,
+			&user.Email,
+			&user.TelegramID,
+			&user.TelegramUsername,
+			&user.Role,
+			&user.Status,
+			&user.FullName,
+			&user.OrganizationID,
+			&user.PasswordHash,
+			&user.CreatedAt,
+			&user.UpdatedAt,
+			&user.LastLoginAt,
+			&user.DeletedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan user: %w", err)
+		}
+		users = append(users, user)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating users: %w", err)
+	}
+
+	if len(users) == 0 {
+		return []*domain.User{}, nil // возвращаем пустой слайс, а не nil
+	}
+
+	return users, nil
 }
 
 // метод для подсчёта количества пользователей
 func (db *UserServiceDBRepository) Count(ctx context.Context) (int, error) {
+	// создаём строку запроса
+	query := `
+						SELECT COUNT(*) FROM users
+						WHERE deleted_at IS NULL
+			`
 
-	// -------------------------- в разработке --------------------------
+	// создаём переменную, куда будем складывать ответ
+	var num int
 
-	return 0, nil
+	// создаём звпрос в БД
+	err := db.Pool.QueryRow(ctx, query).Scan(&num)
+
+	if err != nil {
+		// COUNT(*) всегда возвращает строку с числом (даже 0), поэтому ErrNoRows не возникнет
+		return 0, fmt.Errorf("failed to count users: %w", err)
+	}
+
+	return num, nil
 }
