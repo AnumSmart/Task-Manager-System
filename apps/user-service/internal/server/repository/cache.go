@@ -2,8 +2,11 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"global_models/global_cache"
+	"reflect"
+	"time"
 )
 
 // создаём репозиторий кэша (тут редис) на базе глобального интерфейса
@@ -31,29 +34,54 @@ func NewUserServiceCacheRepo(cache global_cache.Cache, prefix string) (*UserServ
 	}, nil
 }
 
-// метод для получения значения из кэша по ключу
 func (r *UserServiceCacheRepository) Get(ctx context.Context, key string, dest interface{}) error {
+	// Проверяем, что dest - указатель (защита от ошибок)
+	if reflect.TypeOf(dest).Kind() != reflect.Ptr {
+		return fmt.Errorf("dest must be a pointer, got %T", dest)
+	}
+
 	// полный ключ с префиксом
-	//fullKey := r.prefix + ":" + key
-	// -------------------------- в разработке --------------------------
+	fullKey := r.prefix + ":" + key
+
+	// Получаем данные из Redis
+	data, err := r.cache.GetBytes(ctx, fullKey)
+	if err != nil {
+		return fmt.Errorf("cache get failed for key %s: %w", fullKey, err)
+	}
+
+	// Десериализуем JSON в dest (который должен быть указателем)
+	if err := json.Unmarshal(data, dest); err != nil {
+		return fmt.Errorf("failed to unmarshal cache value for key %s: %w", fullKey, err)
+	}
 
 	return nil
 }
 
-// метод для записи пары ключ-значения в кэш с TTL
+// Set - запись значения с автоматической сериализацией
 func (r *UserServiceCacheRepository) Set(ctx context.Context, key string, value interface{}, ttl int) error {
-	// полный ключ с префиксом
-	//fullKey := r.prefix + ":" + key
-	// -------------------------- в разработке --------------------------
+	fullKey := r.prefix + ":" + key
+
+	// Сериализуем value в JSON
+	data, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("failed to marshal value for key %s: %w", fullKey, err)
+	}
+
+	// Сохраняем в кэш
+	if err := r.cache.Set(ctx, fullKey, data, time.Duration(ttl)*time.Second); err != nil {
+		return fmt.Errorf("cache set failed for key %s: %w", fullKey, err)
+	}
 
 	return nil
 }
 
-// метод для удаления записи из кэша по ключу
+// Delete - удаление записи
 func (r *UserServiceCacheRepository) Delete(ctx context.Context, key string) error {
-	// полный ключ с префиксом
-	//fullKey := r.prefix + ":" + key
-	// -------------------------- в разработке --------------------------
+	fullKey := r.prefix + ":" + key
+
+	if err := r.cache.Delete(ctx, fullKey); err != nil {
+		return fmt.Errorf("cache delete failed for key %s: %w", fullKey, err)
+	}
 
 	return nil
 }
