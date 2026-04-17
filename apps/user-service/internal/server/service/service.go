@@ -4,7 +4,7 @@ import "user-service/internal/server/repository"
 
 // Services - агрегатор всех сервисов (бизнес-логика)
 type UserService struct {
-	User         *UserLayer
+	User         *UserServiceLayer
 	Organization *OrganizationLayer
 	Analytics    *AnalyticsLayer
 	Task         *TaskLayer
