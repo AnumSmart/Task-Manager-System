@@ -8,15 +8,15 @@ import (
 	"user-service/internal/server/repository"
 )
 
-// UserLayer - структура сервисного слоя, которая отвечает за работу с пользователями
-type UserLayer struct {
-	UserRepo repository.UserDBRepository
-	Cache    repository.UserCacheRepository
+// UserServiceLayer - структура сервисного слоя, которая отвечает за работу с пользователями
+type UserServiceLayer struct {
+	UserRepo repository.UserDBRepository    // использую интерфейс из repo слоя
+	Cache    repository.UserCacheRepository // использую интерфейс из repo слоя
 }
 
 // NewUserLayer - конструктор для части сервисного слоя (пользователи)
-func NewUserLayer(repo *repository.UserServiceRepository) *UserLayer {
-	return &UserLayer{
+func NewUserLayer(repo *repository.UserServiceRepository) *UserServiceLayer {
+	return &UserServiceLayer{
 		UserRepo: repo.DBRepo,
 		Cache:    repo.CacheRepo,
 	}
@@ -25,12 +25,12 @@ func NewUserLayer(repo *repository.UserServiceRepository) *UserLayer {
 // ==================== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ДЛЯ КЭШИРОВАНИЯ ====================
 
 // getCacheKey - генерация ключа для кэша
-func (s *UserLayer) getCacheKey(userID string) string {
+func (s *UserServiceLayer) getCacheKey(userID string) string {
 	return fmt.Sprintf("user:%s", userID)
 }
 
 // cacheUser - сохранение пользователя в кэш
-func (s *UserLayer) cacheUser(ctx context.Context, user *domain.User) error {
+func (s *UserServiceLayer) cacheUser(ctx context.Context, user *domain.User) error {
 	key := s.getCacheKey(user.ID)
 	// TTL 1 час для пользователей
 	if err := s.Cache.Set(ctx, key, user, 3600); err != nil {
@@ -42,7 +42,7 @@ func (s *UserLayer) cacheUser(ctx context.Context, user *domain.User) error {
 }
 
 // getCachedUser - получение пользователя из кэша
-func (s *UserLayer) getCachedUser(ctx context.Context, userID string) (*domain.User, error) {
+func (s *UserServiceLayer) getCachedUser(ctx context.Context, userID string) (*domain.User, error) {
 	key := s.getCacheKey(userID)
 	var user domain.User
 
@@ -55,7 +55,7 @@ func (s *UserLayer) getCachedUser(ctx context.Context, userID string) (*domain.U
 }
 
 // invalidateUserCache - инвалидация кэша пользователя
-func (s *UserLayer) invalidateUserCache(ctx context.Context, userID string) error {
+func (s *UserServiceLayer) invalidateUserCache(ctx context.Context, userID string) error {
 	key := s.getCacheKey(userID)
 	if err := s.Cache.Delete(ctx, key); err != nil {
 		log.Printf("⚠️ Failed to invalidate cache for user %s: %v", userID, err)
@@ -68,7 +68,7 @@ func (s *UserLayer) invalidateUserCache(ctx context.Context, userID string) erro
 // ==================== ОСНОВНЫЕ CRUD ОПЕРАЦИИ ====================
 
 // CreateUser - создание нового пользователя
-func (s *UserLayer) CreateUser(ctx context.Context, req *domain.CreateUserRequest) (*domain.User, error) {
+func (s *UserServiceLayer) CreateUser(ctx context.Context, req *domain.CreateUserRequest) (*domain.User, error) {
 	log.Printf("📝 Creating user: email=%s, org=%s", req.Email, req.OrganizationID)
 
 	// 1. Проверяем права создающего пользователя
@@ -103,7 +103,7 @@ func (s *UserLayer) CreateUser(ctx context.Context, req *domain.CreateUserReques
 }
 
 // GetUserByID - получение пользователя по ID (с кэшированием)
-func (s *UserLayer) GetUserByID(ctx context.Context, userID string) (*domain.User, error) {
+func (s *UserServiceLayer) GetUserByID(ctx context.Context, userID string) (*domain.User, error) {
 	log.Printf("📝 Getting user by ID: %s", userID)
 
 	// 1. Пытаемся получить из кэша
@@ -125,7 +125,7 @@ func (s *UserLayer) GetUserByID(ctx context.Context, userID string) (*domain.Use
 }
 
 // GetUserWithAccessCheck - получение пользователя с проверкой прав
-func (s *UserLayer) GetUserWithAccessCheck(ctx context.Context, req *domain.GetUserRequest) (*domain.User, error) {
+func (s *UserServiceLayer) GetUserWithAccessCheck(ctx context.Context, req *domain.GetUserRequest) (*domain.User, error) {
 	log.Printf("📝 Getting user with access check: user_id=%s, requester=%s", req.UserID, req.RequesterID)
 
 	// 1. Получаем запрашивающего пользователя
@@ -149,7 +149,7 @@ func (s *UserLayer) GetUserWithAccessCheck(ctx context.Context, req *domain.GetU
 }
 
 // UpdateUser - обновление данных пользователя
-func (s *UserLayer) UpdateUser(ctx context.Context, req *domain.UpdateUserRequest) error {
+func (s *UserServiceLayer) UpdateUser(ctx context.Context, req *domain.UpdateUserRequest) error {
 	log.Printf("📝 Updating user: ID=%s by %s", req.UserID, req.RequesterID)
 
 	// 1. Получаем запрашивающего пользователя
@@ -224,7 +224,7 @@ func (s *UserLayer) UpdateUser(ctx context.Context, req *domain.UpdateUserReques
 }
 
 // DeleteUser - удаление пользователя
-func (s *UserLayer) DeleteUser(ctx context.Context, req *domain.DeleteUserRequest) error {
+func (s *UserServiceLayer) DeleteUser(ctx context.Context, req *domain.DeleteUserRequest) error {
 	log.Printf("📝 Deleting user: ID=%s by %s (hard=%v)", req.UserID, req.RequesterID, req.HardDelete)
 
 	// 1. Получаем запрашивающего пользователя
@@ -266,7 +266,7 @@ func (s *UserLayer) DeleteUser(ctx context.Context, req *domain.DeleteUserReques
 }
 
 // ListUsers - получение списка пользователей с пагинацией
-func (s *UserLayer) ListUsers(ctx context.Context, offset, limit int) ([]*domain.User, int, error) {
+func (s *UserServiceLayer) ListUsers(ctx context.Context, offset, limit int) ([]*domain.User, int, error) {
 	log.Printf("📝 Listing users: offset=%d, limit=%d", offset, limit)
 
 	// Списки обычно не кэшируем, так как они часто меняются
@@ -286,7 +286,7 @@ func (s *UserLayer) ListUsers(ctx context.Context, offset, limit int) ([]*domain
 }
 
 // ListUsersByOrganization - получение списка пользователей организации
-func (s *UserLayer) ListUsersByOrganization(ctx context.Context, organizationID string, offset, limit int) ([]*domain.User, error) {
+func (s *UserServiceLayer) ListUsersByOrganization(ctx context.Context, organizationID string, offset, limit int) ([]*domain.User, error) {
 	log.Printf("📝 Listing users for organization: %s", organizationID)
 
 	// TODO: Добавить метод GetByOrganizationID в репозиторий
@@ -310,7 +310,7 @@ func (s *UserLayer) ListUsersByOrganization(ctx context.Context, organizationID 
 // ==================== ОПЕРАЦИИ АУТЕНТИФИКАЦИИ ====================
 
 // AuthenticateUser - аутентификация пользователя
-func (s *UserLayer) AuthenticateUser(ctx context.Context, email, password string) (*domain.User, error) {
+func (s *UserServiceLayer) AuthenticateUser(ctx context.Context, email, password string) (*domain.User, error) {
 	log.Printf("📝 Authenticating user: email=%s", email)
 
 	// 1. Находим пользователя по email (не кэшируем, так как редко повторяется)
@@ -345,7 +345,7 @@ func (s *UserLayer) AuthenticateUser(ctx context.Context, email, password string
 }
 
 // ChangePassword - смена пароля пользователя
-func (s *UserLayer) ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error {
+func (s *UserServiceLayer) ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error {
 	log.Printf("📝 Changing password: user_id=%s", userID)
 
 	// 1. Получаем пользователя
@@ -380,7 +380,7 @@ func (s *UserLayer) ChangePassword(ctx context.Context, userID, oldPassword, new
 // ==================== РОЛЕВЫЕ ОПЕРАЦИИ ====================
 
 // TransferOwnership - передача прав OWNER другому пользователю
-func (s *UserLayer) TransferOwnership(ctx context.Context, currentOwnerID, newOwnerID, organizationID string) error {
+func (s *UserServiceLayer) TransferOwnership(ctx context.Context, currentOwnerID, newOwnerID, organizationID string) error {
 	log.Printf("📝 Transferring ownership: from=%s to=%s", currentOwnerID, newOwnerID)
 
 	// 1. Получаем текущего владельца
@@ -434,12 +434,12 @@ func (s *UserLayer) TransferOwnership(ctx context.Context, currentOwnerID, newOw
 // ==================== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ====================
 
 // GetUserByEmail - получение пользователя по email (без кэширования)
-func (s *UserLayer) GetUserByEmail(ctx context.Context, email string) (*domain.User, error) {
+func (s *UserServiceLayer) GetUserByEmail(ctx context.Context, email string) (*domain.User, error) {
 	return s.UserRepo.GetByEmail(ctx, email)
 }
 
 // CheckUserExists - проверка существования пользователя
-func (s *UserLayer) CheckUserExists(ctx context.Context, userID string) (bool, error) {
+func (s *UserServiceLayer) CheckUserExists(ctx context.Context, userID string) (bool, error) {
 	user, err := s.GetUserByID(ctx, userID)
 	if err != nil {
 		return false, nil
@@ -448,7 +448,7 @@ func (s *UserLayer) CheckUserExists(ctx context.Context, userID string) (bool, e
 }
 
 // GetUsersByRole - получение пользователей по роли
-func (s *UserLayer) GetUsersByRole(ctx context.Context, organizationID string, role domain.Role) ([]*domain.User, error) {
+func (s *UserServiceLayer) GetUsersByRole(ctx context.Context, organizationID string, role domain.Role) ([]*domain.User, error) {
 	// TODO: Добавить метод в репозиторий для фильтрации по роли
 	users, err := s.UserRepo.List(ctx, 0, 1000)
 	if err != nil {
@@ -466,7 +466,7 @@ func (s *UserLayer) GetUsersByRole(ctx context.Context, organizationID string, r
 }
 
 // BulkGetUsers - массовое получение пользователей (с кэшированием)
-func (s *UserLayer) BulkGetUsers(ctx context.Context, userIDs []string) ([]*domain.User, error) {
+func (s *UserServiceLayer) BulkGetUsers(ctx context.Context, userIDs []string) ([]*domain.User, error) {
 	log.Printf("📝 Bulk getting users: %d IDs", len(userIDs))
 
 	var users []*domain.User
