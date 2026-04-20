@@ -32,6 +32,26 @@ telegram-bot/
 ├── Dockerfile
 └── .env
 
+## 🔐 Управление JWT сессиями
+
+### Структура сессии в Redis
+
+```
+json
+{
+  "chat_id": 123456789,
+  "jwt_token": "eyJhbGciOiJIUzI1NiIs...",
+  "user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "email": "admin@romashka.ru",
+  "role": "owner",
+  "org_id": "660e8400-e29b-41d4-a716-446655440000",
+  "full_name": "Иван Иванов",
+  "expires_at": "2024-01-15T12:00:00Z",
+  "created_at": "2024-01-14T12:00:00Z",
+  "last_active": "2024-01-14T15:30:00Z"
+}
+```
+
 ## Команды бота
 
 | Команда      | Описание                                  | Доступ       |

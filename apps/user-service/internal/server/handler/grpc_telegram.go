@@ -46,7 +46,21 @@ func (s *UserServerHandler) GetMyProfile(ctx context.Context, req *pb.GetMyProfi
 	default:
 	}
 
-	log.Printf("📝 GetMyProfile вызван: telegram_id=%d", req.GetTelegramId())
+	log.Printf("📝 GetMyProfile вызван: telegram_id=%s", req.GetRequestId())
+
+	return &pb.GetUserResponse{}, nil
+}
+
+// UpdateMyProfile - обновление своего профиля
+func (s *UserServerHandler) UpdateMyProfile(ctx context.Context, req *pb.UpdateMyProfileRequest) (*pb.GetUserResponse, error) {
+	select {
+	case <-ctx.Done():
+		log.Printf("❌ Контекст отменён: %v", ctx.Err())
+		return nil, ctx.Err()
+	default:
+	}
+
+	log.Printf("📝 UpdateMyProfile вызван: telegram_id=%s", req.GetRequestId())
 
 	return &pb.GetUserResponse{}, nil
 }

@@ -7,76 +7,145 @@ syntax = "proto3";
 package user.v1;
 
 // Указывает Go package path для сгенерированного кода.
-// Все сгенерированные .pb.go файлы будут иметь package user_service_v1, но физически
+// Все сгенерированные .pb.go файлы будут иметь package user_v1, но физически
 // расположены в директории task_managenemt_system_v_1_20/api/gen/go/user/v1
 // Это позволяет импортировать пакет в Go как: import "user_v1"
 option go_package = "api/gen/go/user/v1;user_v1";
 
 import "proto/common/v1/types.proto";
+import "google/protobuf/timestamp.proto";
 
 // Определение gRPC сервиса. Это контракт между клиентом и сервером.
 // Сервис UserService предоставляет методы для взаимодействия
 service UserService {
-    // ==================== Инициализация системы (однократно) ====================
-    rpc SetupInitialOrganization(SetupInitialOrganizationRequest) returns (SetupInitialOrganizationResponse);  // Вызывается при первом запуске для создания организации и владельца
-    rpc GetOrganization(GetOrganizationRequest) returns (GetOrganizationResponse); // Всегда возвращает одну и ту же организацию (id известен системе)
-
-    // ==================== Управление пользователями (CRUD) ====================
-
-    // CreateUser - создание нового пользователя в организации
-    // Только пользователи с ролью OWNER или MANAGER могут создавать новых пользователей
-    rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
-    // GetUser - получение информации о пользователе по ID
-    // Доступна всем авторизованным пользователям (но разные роли видят разный набор полей)
-    rpc GetUser(GetUserRequest) returns (GetUserResponse);
-    // UpdateUser - обновление данных пользователя
-    // OWNER может менять любые поля, MANAGER - только некоторые, EMPLOYEE - только свой профиль
-    rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse);
-    // DeleteUser - удаление или деактивация пользователя
-    // Только OWNER может удалять пользователей (soft delete рекомендуется)
-    rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
-    // ListUsers - получение списка пользователей с фильтрацией и пагинацией
-    // Доступно для OWNER и MANAGER, EMPLOYEE видит только себя
-    rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+    // ==================== Публичные методы (без авторизации) ====================
     
-    // ==================== Для telegram-bot ====================
+    // SetupInitialOrganization - первичная настройка системы
+    // Вызывается при первом запуске для создания организации и владельца
+    // 🔓 ПУБЛИЧНЫЙ МЕТОД (без авторизации)
+    rpc SetupInitialOrganization(SetupInitialOrganizationRequest) returns (SetupInitialOrganizationResponse);
+    
     // LinkTelegram - привязка Telegram аккаунта к существующему пользователю
     // Пользователь вводит свой email в боте, после чего происходит привязка
+    // 🔓 ПУБЛИЧНЫЙ МЕТОД (без авторизации)
+    // 🔥 ВОЗВРАЩАЕТ: JWT токен для дальнейшей работы
     rpc LinkTelegram(LinkTelegramRequest) returns (LinkTelegramResponse);
-    // GetUserByTelegram - поиск пользователя по Telegram ID
-    // Используется ботом для идентификации пользователя при каждом запросе
-    rpc GetUserByTelegram(GetUserByTelegramRequest) returns (GetUserResponse);
-    // GetMyProfile - получение своего профиля по Telegram ID
+    
+    // HealthCheck - проверка здоровья сервиса
+    // Используется для мониторинга и orchestration
+    // 🔓 ПУБЛИЧНЫЙ МЕТОД (без авторизации)
+    rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+    
+    // ==================== Методы с JWT авторизацией ====================
+    
+    // GetMyProfile - получение своего профиля
     // Удобный метод для бота, чтобы не хранить user_id на клиенте
+    // 🔒 JWT авторизация (токен в metadata)
+    // 👤 ДОСТУП: Любой авторизованный пользователь
     rpc GetMyProfile(GetMyProfileRequest) returns (GetUserResponse);
     
-    // ==================== Для task-service ====================
-    // ValidateUser - комплексная проверка пользователя перед назначением задачи
-    // Проверяет существование, активность и соответствие ролям
-    rpc ValidateUser(ValidateUserRequest) returns (ValidateUserResponse);
-    // CheckUserExists - быстрая проверка существования пользователя
-    // Используется для валидации перед созданием задачи
-    rpc CheckUserExists(CheckUserExistsRequest) returns (CheckUserExistsResponse);
+    // UpdateMyProfile - обновление своего профиля
+    // Пользователь может обновить только свои данные (full_name)
+    // 🔒 JWT авторизация (токен в metadata)
+    // 👤 ДОСТУП: Любой авторизованный пользователь
+    rpc UpdateMyProfile(UpdateMyProfileRequest) returns (GetUserResponse);
+    
+    // GetOrganization - получение информации об организации
+    // Всегда возвращает организацию текущего пользователя (из JWT)
+    // 🔒 JWT авторизация (токен в metadata)
+    // 👤 ДОСТУП: Любой авторизованный пользователь
+    rpc GetOrganization(GetOrganizationRequest) returns (GetOrganizationResponse);
+    
+    // CreateUser - создание нового пользователя в организации
+    // 🔒 JWT авторизация + проверка роли
+    // 👤 ДОСТУП: Только MANAGER или OWNER
+    rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+    
+    // GetUser - получение информации о пользователе по ID
+    // 🔒 JWT авторизация + проверка прав
+    // 👤 ДОСТУП: OWNER/MANAGER могут видеть всех, EMPLOYEE только себя
+    rpc GetUser(GetUserRequest) returns (GetUserResponse);
+    
+    // UpdateUser - обновление данных пользователя
+    // 🔒 JWT авторизация + проверка прав
+    // 👤 ДОСТУП: OWNER может менять любые поля, MANAGER - только некоторые, EMPLOYEE - только свой профиль
+    rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse);
+    
+    // DeleteUser - удаление или деактивация пользователя
+    // 🔒 JWT авторизация + проверка роли
+    // 👤 ДОСТУП: Только OWNER
+    // ⚠️ Нельзя удалить самого себя
+    rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
+    
+    // ListUsers - получение списка пользователей с фильтрацией и пагинацией
+    // 🔒 JWT авторизация + проверка прав
+    // 👤 ДОСТУП: OWNER и MANAGER (EMPLOYEE видит только себя)
+    rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+    
+    // Logout - выход из системы (отзыв JWT токена)
+    // 🔒 JWT авторизация (токен в metadata)
+    // 👤 ДОСТУП: Любой авторизованный пользователь
+    rpc Logout(LogoutRequest) returns (LogoutResponse);
+    
+    // ==================== Методы для сервисов (API Key) ====================
+    
+    // ValidateToken - проверка JWT токена
+    // Альтернатива локальной проверке подписи для сервисов без JWT_SECRET
+    // 🔒 API Key авторизация (x-service-name, x-service-key)
+    // 🎯 ИСПОЛЬЗУЕТСЯ: task-service, analytics-service, notification-service
+    rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
+    
     // GetUserByID - получение пользователя по ID (алиас для GetUser)
-    // Выделен в отдельный метод для task-service для чёткого разделения ответственности
+    // Выделен в отдельный метод для чёткого разделения ответственности
+    // 🔒 API Key авторизация
+    // 🎯 ИСПОЛЬЗУЕТСЯ: task-service, notification-service
     rpc GetUserByID(GetUserByIDRequest) returns (GetUserResponse);
+    
+    // GetUserByTelegram - поиск пользователя по Telegram ID
+    // Используется для отправки уведомлений
+    // 🔒 API Key авторизация
+    // 🎯 ИСПОЛЬЗУЕТСЯ: notification-service
+    rpc GetUserByTelegram(GetUserByTelegramRequest) returns (GetUserResponse);
+    
     // BatchGetUsers - массовое получение пользователей
     // Оптимизация: вместо N вызовов GetUser - один вызов BatchGetUsers
+    // 🔒 API Key авторизация
+    // 🎯 ИСПОЛЬЗУЕТСЯ: task-service (при отображении списка задач)
     rpc BatchGetUsers(BatchGetUsersRequest) returns (BatchGetUsersResponse);
     
-    // ==================== Для analytics-service ====================
-    // GetAllUsers - получение всех пользователей (без пагинации)
-    // Используется аналитикой для построения полных отчётов
-    rpc GetAllUsers(GetAllUsersRequest) returns (GetAllUsersResponse);
+    // ValidateUser - комплексная проверка пользователя перед назначением задачи
+    // Проверяет существование, активность и соответствие ролям
+    // 🔒 API Key авторизация
+    // 🎯 ИСПОЛЬЗУЕТСЯ: task-service
+    rpc ValidateUser(ValidateUserRequest) returns (ValidateUserResponse);
+    
+    // CheckUserExists - быстрая проверка существования пользователя
+    // Используется для валидации перед созданием задачи
+    // 🔒 API Key авторизация
+    // 🎯 ИСПОЛЬЗУЕТСЯ: task-service
+    rpc CheckUserExists(CheckUserExistsRequest) returns (CheckUserExistsResponse);
+    
     // GetUsersByRole - получение пользователей с определённой ролью
     // Например: "показать всех MANAGER'ов для назначения"
+    // 🔒 API Key авторизация
+    // 🎯 ИСПОЛЬЗУЕТСЯ: task-service, analytics-service
     rpc GetUsersByRole(GetUsersByRoleRequest) returns (GetUsersByRoleResponse);
+    
     // GetUserRole - быстрый метод получения только роли пользователя
     // Легче, чем полный GetUser, когда нужна только роль
+    // 🔒 API Key авторизация
+    // 🎯 ИСПОЛЬЗУЕТСЯ: analytics-service
     rpc GetUserRole(GetUserRoleRequest) returns (GetUserRoleResponse);
+    
+    // GetAllUsers - получение всех пользователей (без пагинации)
+    // Используется аналитикой для построения полных отчётов
+    // 🔒 API Key авторизация
+    // 🎯 ИСПОЛЬЗУЕТСЯ: analytics-service
+    rpc GetAllUsers(GetAllUsersRequest) returns (GetAllUsersResponse);
 }
 
 // ==================== Инициализация и организация ====================
+
 message SetupInitialOrganizationRequest {
     string request_id = 1; // Уникальный идентификатор запроса для трейсинга и дебаггинга (UUID)
     string organization_name = 2; // Название организации (компании)
@@ -86,32 +155,32 @@ message SetupInitialOrganizationRequest {
 }
 
 message SetupInitialOrganizationResponse {
-    bool success = 1; // Флаг успешности операции (true - организация и владелец созданы, false - произошла ошибка)
-    common.v1.Organization organization = 2; // Созданная организация (заполнено только при success = true)
-    common.v1.User owner = 3; // Созданный пользователь-владелец (заполнено только при success = true)
-    string message = 4; // Cообщение для пользователя
+    bool success = 1; // Флаг успешности операции
+    common.v1.Organization organization = 2; // Созданная организация
+    common.v1.User owner = 3; // Созданный пользователь-владелец
+    string message = 4; // Сообщение для пользователя
     string error_message = 5; // Сообщение об ошибке (заполнено только при success = false)
 }
 
 message GetOrganizationRequest {
     string request_id = 1; // Уникальный идентификатор запроса для трейсинга
-                                                            // Поле organization_id отсутствует, т.к. организация в системе одна
-                                                            // Система сама знает ID единственной организации
 }
 
 message GetOrganizationResponse {
     bool success = 1; // Флаг успешности операции
-    common.v1.Organization organization = 2; // Объект организации (заполнен при success = true)
+    common.v1.Organization organization = 2; // Объект организации
     string error_message = 3; // Сообщение об ошибке (при success = false)
 }
 
+// ==================== Управление пользователями (CRUD) ====================
+
 message CreateUserRequest {
     string request_id = 1; // Уникальный идентификатор запроса для трейсинга
-    string email = 2; // Email нового пользователя (должен быть уникальным). Используется для входа и привязки Telegram
+    string email = 2; // Email нового пользователя (должен быть уникальным)
     string password = 3; // Пароль нового пользователя (будет хэширован)
-    common.v1.Role role = 4; // Роль пользователя в системе (OWNER, MANAGER, EMPLOYEE)
+    common.v1.Role role = 4; // Роль пользователя в системе
     string full_name = 5; // Полное имя пользователя для отображения
-    optional int64 telegram_id = 6;                         // Telegram ID для автоматической привязки (опционально)
+    optional int64 telegram_id = 6; // Telegram ID для автоматической привязки (опционально)
 }
 
 message CreateUserResponse {
@@ -134,10 +203,10 @@ message GetUserResponse {
 message UpdateUserRequest {
     string request_id = 1; // Уникальный идентификатор запроса для трейсинга
     string user_id = 2; // ID пользователя, данные которого обновляются
-    optional string email = 3;                              // Новый email (опционально), Только OWNER может менять email другого пользователя
-    optional common.v1.Role role = 4;                       // Новая роль (опционально), Только OWNER может менять роли
-    optional string full_name = 5;                          // Новое полное имя (опционально), Пользователь может менять своё имя, MANAGER/OWNER - чужое
-    optional common.v1.UserStatus status = 6;               // Новый статус пользователя (опционально), Только OWNER может менять статус
+    optional string email = 3; // Новый email (опционально), Только OWNER может менять email другого пользователя
+    optional common.v1.Role role = 4; // Новая роль (опционально), Только OWNER может менять роли
+    optional string full_name = 5; // Новое полное имя (опционально), Пользователь может менять своё имя, MANAGER/OWNER - чужое
+    optional common.v1.UserStatus status = 6; // Новый статус пользователя (опционально), Только OWNER может менять статус
 }
 
 message UpdateUserResponse {
@@ -149,12 +218,7 @@ message UpdateUserResponse {
 message DeleteUserRequest {
     string request_id = 1; // Уникальный идентификатор запроса для трейсинга
     string user_id = 2; // ID пользователя для удаления
-    // Флаг мягкого удаления
-    // true - пользователь деактивируется (status = INACTIVE)
-    // false - пользователь полностью удаляется из БД (не рекомендуется)
-    // Только OWNER может удалять пользователей
-    // Нельзя удалить самого себя
-    bool soft_delete = 3;
+    bool soft_delete = 3; // Флаг мягкого удаления: true - деактивация, false - полное удаление
 }
 
 message DeleteUserResponse {
@@ -164,249 +228,176 @@ message DeleteUserResponse {
 
 message ListUsersRequest {  
     string request_id = 1; // Уникальный идентификатор запроса для трейсинга
-    optional common.v1.Role role = 2;                       // Фильтр по роли (опционально), Если указан, возвращаются только пользователи с этой ролью
-    optional common.v1.UserStatus status = 3;               // Фильтр по статусу (опционально), Если указан, возвращаются только пользователи с этим статусом
+    optional common.v1.Role role = 2; // Фильтр по роли (опционально)
+    optional common.v1.UserStatus status = 3; // Фильтр по статусу (опционально)
     int32 page = 4; // Номер страницы (начинается с 1)
-    // Размер страницы (количество записей на страницу)
-    // Максимальное значение: 100, минимальное: 1
-    // Рекомендуемое значение: 20-50 для оптимальной производительности
-    int32 page_size = 5;
+    int32 page_size = 5; // Размер страницы (1-100, рекомендуется 20-50)
 }
 
 message ListUsersResponse {
     bool success = 1; // Флаг успешности операции
     repeated common.v1.User users = 2; // Список пользователей на текущей странице
-    // Объект пагинации с мета-информацией
-    // Содержит номер страницы, размер, общее количество и количество страниц
-    common.v1.Pagination pagination = 3;
+    common.v1.Pagination pagination = 3; // Объект пагинации с мета-информацией
     string error_message = 4; // Сообщение об ошибке (при success = false)
 }
 
-// ==================== Для telegram-bot ====================
+// ==================== Для Telegram бота ====================
 
 message LinkTelegramRequest {
     string request_id = 1; // Уникальный идентификатор запроса для трейсинга
-    // Email пользователя для идентификации в системе
-    // Пользователь вводит email в Telegram боте
-    // Должен соответствовать существующему пользователю
-    string email = 2;
-    
-    // Telegram ID пользователя (число, получается от Bot API)
-    // Пример: 123456789
-    // Должен быть уникальным в системе
-    int64 telegram_id = 3;
-    
-    // Telegram username (опционально, для информации)
-    // Пример: "@ivan_petrov"
-    // Используется для отображения в интерфейсе
-    string telegram_username = 4;
+    string email = 2; // Email пользователя для идентификации в системе
+    int64 telegram_id = 3; // Telegram ID пользователя (число, получается от Bot API)
+    optional string telegram_username = 4; // Telegram username (опционально, для информации)
 }
 
 message LinkTelegramResponse {
-    // Флаг успешности операции
-    bool success = 1;
-    
-    // Сообщение для пользователя
-    // Пример: "Telegram аккаунт @ivan_petrov привязан к пользователю ivan@romashka.ru"
-    string message = 2;
-    
-    // Обновлённый объект пользователя (с заполненным telegram_id)
-    common.v1.User user = 3;
-    
-    // Сообщение об ошибке (при success = false)
-    // Примеры: "User not found", "Telegram ID already linked to another user"
-    string error_message = 4;
-}
-
-message GetUserByTelegramRequest {
-    // Уникальный идентификатор запроса для трейсинга
-    string request_id = 1;
-    
-    // Telegram ID для поиска пользователя
-    // Получается из сообщения в боте
-    int64 telegram_id = 2;
+    bool success = 1; // Флаг успешности операции
+    string message = 2; // Сообщение для пользователя
+    common.v1.User user = 3; // Обновлённый объект пользователя (с заполненным telegram_id)
+    string error_message = 4; // Сообщение об ошибке (при success = false)
+    string jwt_token = 5; // 🔥 JWT токен для последующей авторизации
+    int64 expires_in = 6; // Время жизни токена в секундах
+    common.v1.JWTClaims claims = 7; // Claims токена (опционально, для информации)
 }
 
 message GetMyProfileRequest {
-    // Уникальный идентификатор запроса для трейсинга
-    string request_id = 1;
-    
-    // Telegram ID текущего пользователя
-    // Используется для поиска своего профиля
-    int64 telegram_id = 2;
+    string request_id = 1; // Уникальный идентификатор запроса для трейсинга
+    // ❌ telegram_id не передаётся! Он извлекается из JWT в metadata
 }
 
-// ==================== Для task-service ====================
-
-message ValidateUserRequest {
-    // Уникальный идентификатор запроса для трейсинга
-    string request_id = 1;
-    
-    // ID пользователя для валидации
-    string user_id = 2;
-    
-    // Список разрешённых ролей для текущей операции
-    // Пример: [ROLE_MANAGER, ROLE_EMPLOYEE] - проверяем, что пользователь менеджер или сотрудник
-    // Если список пуст - проверяется только существование и активность
-    repeated common.v1.Role allowed_roles = 3;
+message UpdateMyProfileRequest {
+    string request_id = 1; // Уникальный идентификатор запроса для трейсинга
+    optional string full_name = 2; // Новое полное имя
+    // email и role нельзя менять через этот метод
 }
 
-message ValidateUserResponse {
-    // Флаг успешности операции (сам RPC вызов)
-    bool success = 1;
-    
-    // Флаг валидности пользователя (результат проверки)
-    // true - пользователь существует, активен и имеет разрешённую роль
-    bool is_valid = 2;
-    
-    // Объект пользователя (заполнен если is_valid = true)
-    // Возвращается для удобства, чтобы не делать дополнительный вызов GetUser
-    common.v1.User user = 3;
-    
-    // Текст ошибки валидации (заполнен если is_valid = false)
-    // Примеры: "User not found", "User is inactive", "Invalid role: expected MANAGER or EMPLOYEE"
-    string validation_error = 4;
+message GetUserByTelegramRequest {
+    string request_id = 1; // Уникальный идентификатор запроса для трейсинга
+    int64 telegram_id = 2; // Telegram ID для поиска пользователя
 }
 
-message CheckUserExistsRequest {
-    // Уникальный идентификатор запроса для трейсинга
-    string request_id = 1;
-    
-    // ID пользователя для проверки существования
-    string user_id = 2;
+// ==================== Для сервисов (task-service, notification-service) ====================
+
+message ValidateTokenRequest {
+    string request_id = 1; // Уникальный идентификатор запроса для трейсинга
+    string token = 2; // JWT токен для проверки
 }
 
-message CheckUserExistsResponse {
-    // Флаг успешности операции (сам RPC вызов)
-    bool success = 1;
-    
-    // Флаг существования пользователя в системе
-    bool exists = 2;
-    
-    // Флаг активности пользователя (актуален только если exists = true)
-    // false если статус INACTIVE или SUSPENDED
-    bool is_active = 3;
-    
-    // Сообщение об ошибке (при success = false)
-    string error_message = 4;
+message ValidateTokenResponse {
+    bool success = 1; // Флаг успешности операции (сам RPC вызов)
+    bool valid = 2; // Валиден ли токен
+    string user_id = 3; // ID пользователя из токена
+    string email = 4; // Email пользователя
+    common.v1.Role role = 5; // Роль пользователя
+    string organization_id = 6; // ID организации
+    optional int64 telegram_id = 7; // Telegram ID
+    int64 expires_at = 8; // Время истечения (Unix timestamp)
+    string error_message = 9; // Сообщение об ошибке (если токен невалиден)
 }
 
 message GetUserByIDRequest {
-    // Уникальный идентификатор запроса для трейсинга
-    string request_id = 1;
-    
-    // ID пользователя для получения
-    string user_id = 2;
+    string request_id = 1; // Уникальный идентификатор запроса для трейсинга
+    string user_id = 2; // ID пользователя для получения
 }
 
 message BatchGetUsersRequest {
-    // Уникальный идентификатор запроса для трейсинга
-    string request_id = 1;
-    
-    // Список ID пользователей для массового получения
-    // Ограничение: максимум 100 ID за один запрос
-    // Пример: ["id1", "id2", "id3"]
-    repeated string user_ids = 2;
+    string request_id = 1; // Уникальный идентификатор запроса для трейсинга
+    repeated string user_ids = 2; // Список ID пользователей (максимум 100)
 }
 
 message BatchGetUsersResponse {
-    // Флаг успешности операции
-    bool success = 1;
-    
-    // Map "ID пользователя" -> "Объект пользователя"
-    // Включает только найденных пользователей
-    // Пример: {"id1": User{...}, "id2": User{...}}
-    map<string, common.v1.User> users = 2;
-    
-    // Список ID, которые не были найдены в системе
-    // Позволяет клиенту понять, какие пользователи отсутствуют
-    repeated string not_found_ids = 3;
-    
-    // Сообщение об ошибке (при success = false)
-    string error_message = 4;
+    bool success = 1; // Флаг успешности операции
+    map<string, common.v1.User> users = 2; // Map "ID пользователя" -> "Объект пользователя"
+    repeated string not_found_ids = 3; // Список ID, которые не были найдены
+    string error_message = 4; // Сообщение об ошибке (при success = false)
+}
+
+message ValidateUserRequest {
+    string request_id = 1; // Уникальный идентификатор запроса для трейсинга
+    string user_id = 2; // ID пользователя для валидации
+    repeated common.v1.Role allowed_roles = 3; // Список разрешённых ролей (если пуст - только существование и активность)
+}
+
+message ValidateUserResponse {
+    bool success = 1; // Флаг успешности операции (сам RPC вызов)
+    bool is_valid = 2; // Флаг валидности пользователя (результат проверки)
+    common.v1.User user = 3; // Объект пользователя (заполнен если is_valid = true)
+    string validation_error = 4; // Текст ошибки валидации (заполнен если is_valid = false)
+}
+
+message CheckUserExistsRequest {
+    string request_id = 1; // Уникальный идентификатор запроса для трейсинга
+    string user_id = 2; // ID пользователя для проверки существования
+}
+
+message CheckUserExistsResponse {
+    bool success = 1; // Флаг успешности операции (сам RPC вызов)
+    bool exists = 2; // Флаг существования пользователя в системе
+    bool is_active = 3; // Флаг активности пользователя (актуален только если exists = true)
+    string error_message = 4; // Сообщение об ошибке (при success = false)
 }
 
 // ==================== Для analytics-service ====================
 
 message GetAllUsersRequest {
-    // Уникальный идентификатор запроса для трейсинга
-    string request_id = 1;
-    
-    // Включать ли неактивных пользователей в результат
-    // true - возвращаются все пользователи (ACTIVE, INACTIVE, SUSPENDED)
-    // false - возвращаются только ACTIVE пользователи
-    bool include_inactive = 2;
-    
-    // Максимальное количество возвращаемых записей
-    // Используется для ограничения размера ответа
-    // Максимум: 1000, если не указано - 100
-    int32 limit = 3;
-    
-    // Смещение для пагинации (сколько записей пропустить)
-    // Используется вместе с limit для постраничного вывода
-    // Пример: limit=10, offset=20 → записи 21-30
-    int32 offset = 4;
+    string request_id = 1; // Уникальный идентификатор запроса для трейсинга
+    bool include_inactive = 2; // Включать ли неактивных пользователей
+    int32 limit = 3; // Максимальное количество возвращаемых записей (максимум 1000)
+    int32 offset = 4; // Смещение для пагинации
 }
 
 message GetAllUsersResponse {
-    // Флаг успешности операции
-    bool success = 1;
-    
-    // Список пользователей (все или отфильтрованные по include_inactive)
-    repeated common.v1.User users = 2;
-    
-    // Общее количество пользователей (без учёта limit/offset)
-    // Используется для пагинации на клиенте
-    int32 total = 3;
-    
-    // Сообщение об ошибке (при success = false)
-    string error_message = 4;
+    bool success = 1; // Флаг успешности операции
+    repeated common.v1.User users = 2; // Список пользователей
+    int32 total = 3; // Общее количество пользователей (без учёта limit/offset)
+    string error_message = 4; // Сообщение об ошибке (при success = false)
 }
 
 message GetUsersByRoleRequest {
-    // Уникальный идентификатор запроса для трейсинга
-    string request_id = 1;
-    
-    // Роль для фильтрации (обязательное поле)
-    // Пример: ROLE_MANAGER - получить всех менеджеров
-    common.v1.Role role = 2;
-    
-    // Включать ли неактивных пользователей
-    // true - включаем INACTIVE и SUSPENDED, false - только ACTIVE
-    bool include_inactive = 3;
+    string request_id = 1; // Уникальный идентификатор запроса для трейсинга
+    common.v1.Role role = 2; // Роль для фильтрации (обязательное поле)
+    bool include_inactive = 3; // Включать ли неактивных пользователей
 }
 
 message GetUsersByRoleResponse {
-    // Флаг успешности операции
-    bool success = 1;
-    
-    // Список пользователей с указанной ролью
-    repeated common.v1.User users = 2;
-    
-    // Общее количество найденных пользователей
-    int32 total = 3;
-    
-    // Сообщение об ошибке (при success = false)
-    string error_message = 4;
+    bool success = 1; // Флаг успешности операции
+    repeated common.v1.User users = 2; // Список пользователей с указанной ролью
+    int32 total = 3; // Общее количество найденных пользователей
+    string error_message = 4; // Сообщение об ошибке (при success = false)
 }
 
 message GetUserRoleRequest {
-    // Уникальный идентификатор запроса для трейсинга
-    string request_id = 1;
-    
-    // ID пользователя, чью роль нужно получить
-    string user_id = 2;
+    string request_id = 1; // Уникальный идентификатор запроса для трейсинга
+    string user_id = 2; // ID пользователя, чью роль нужно получить
 }
 
 message GetUserRoleResponse {
-    // Флаг успешности операции
-    bool success = 1;
-    
-    // Роль пользователя (OWNER, MANAGER, EMPLOYEE)
-    // Заполнено только при success = true
-    common.v1.Role role = 2;
-    
-    // Сообщение об ошибке (при success = false)
-    // Примеры: "User not found", "Access denied"
-    string error_message = 3;
+    bool success = 1; // Флаг успешности операции
+    common.v1.Role role = 2; // Роль пользователя
+    string error_message = 3; // Сообщение об ошибке (при success = false)
+}
+
+// ==================== Выход из системы ====================
+
+message LogoutRequest {
+    string request_id = 1; // Уникальный идентификатор запроса для трейсинга
+    // JWT токен извлекается из metadata
+}
+
+message LogoutResponse {
+    bool success = 1; // Флаг успешности операции
+    string message = 2; // Сообщение для пользователя
+    string error_message = 3; // Сообщение об ошибке (при success = false)
+}
+
+// ==================== Health Check ====================
+
+message HealthCheckRequest {
+    string request_id = 1; // Уникальный идентификатор запроса для трейсинга
+}
+
+message HealthCheckResponse {
+    bool success = 1; // Флаг успешности операции
+    string status = 2; // Статус сервиса ("SERVING", "NOT_SERVING")
+    map<string, string> details = 3; // Детали состояния сервиса
 }
