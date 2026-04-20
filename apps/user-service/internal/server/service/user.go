@@ -68,11 +68,11 @@ func (s *UserServiceLayer) invalidateUserCache(ctx context.Context, userID strin
 // ==================== ОСНОВНЫЕ CRUD ОПЕРАЦИИ ====================
 
 // CreateUser - создание нового пользователя
-func (s *UserServiceLayer) CreateUser(ctx context.Context, req *domain.CreateUserRequest) (*domain.User, error) {
+func (s *UserServiceLayer) CreateUser(ctx context.Context, req *domain.CreateUserRequest, createdBy string) (*domain.User, error) {
 	log.Printf("📝 Creating user: email=%s, org=%s", req.Email, req.OrganizationID)
 
 	// 1. Проверяем права создающего пользователя
-	requester, err := s.UserRepo.GetByID(ctx, req.CreatedBy)
+	requester, err := s.UserRepo.GetByID(ctx, createdBy)
 	if err != nil {
 		return nil, fmt.Errorf("requester not found: %w", err)
 	}
