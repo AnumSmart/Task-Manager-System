@@ -17,7 +17,7 @@
 user-service/
 ├── cmd/
 │ ├── di_container.go                         # Создание DI контейнера
-│ ├── garce_shut_down.go                      # Описание функций gracefull shutdown
+│ ├── grace_shut_down.go                      # Описание функций gracefull shutdown
 │ ├── health_check.go                         # Описание функций health check
 │ ├── start_server.go                         # Описание функций запуска сервера
 │ └── main.go                                 # точка входа
@@ -34,11 +34,12 @@ user-service/
 │ │ ├── common.go                             # общие удобные функции
 │ │ └── errors.go                             # domain errors
 │ ├── server/
-│ │ ├── interseptors/                         # Интерсепторы
+│ │ ├── interceptors/                         # Интерсепторы
 │ │ |     ├── logging.go                      # Интерсептор для логирования
 │ │ |     └── recovery.go                     # Интерсептор для ловли паники
 │ │ ├── handler/                              # Слой хэндлеров (удовлетворяют grpc интерфейсу)
 │ │ |     ├── grpc_analytics_integration.go   # Хэндлер для аналитики
+│ │ |     ├── grpc_common.go                  # Хэндлер методы общего назначения
 │ │ |     ├── grpc_organization.go            # Хэндлер для организации
 │ │ |     ├── grpc_task_integration.go        # Хэндлер для задач
 │ │ |     ├── grpc_telegram.go                # Хэндлер для телеграмма
@@ -112,74 +113,182 @@ user-service/
 
 ```
 ┌─────────────────┐
-│ Telegram Bot    │ (внешний клиент)
+│   Telegram Bot  │ (внешний клиент)
 └────────┬────────┘
-         │ JWT (Bearer token)
+         │
+         │ 1. LinkTelegram (без токена)
          ▼
-┌────────────────────────────────────┐
-│ User Service                       │
-│ ┌─────────────────────────────┐    │
-│ │ gRPC Server                 │    │
-│ │ ├── Auth Interceptor (JWT)  │    │
-│ │ └── Service Interceptor     │    │
-│ └─────────────────────────────┘    │
-└────────┬───────────────┬───────────┘
+┌─────────────────────────────────────┐
+│           User Service              │
+│ ┌─────────────────────────────┐     │
+│ │ gRPC Server                 │     │
+│ │ ├── Public Methods (no auth)│     │
+│ │ ├── JWT Interceptor         │     │
+│ │ └── Service Interceptor     │     │
+│ └─────────────────────────────┘     │
+│                                     │
+│ 🔥 ГЕНЕРАЦИЯ JWT (после привязки)   │
+└────────┬───────────────┬────────────┘
          │               │
          ▼               ▼
-    ┌─────────┐     ┌──────────┐
-    │Postgres │     │  Redis   │
-    └─────────┘     └──────────┘
-
-Internal services call with API Key
-                 │
-                 ▼
-        ┌─────────────────┐
-        │ Task Service    │ ──► API Key ──► User Service
-        └─────────────────┘
+    ┌─────────┐    ┌──────────┐
+    │Postgres │    │   Redis  │
+    └─────────┘    └──────────┘
+        │               │
+        │               │ JWT токен
+        │               ▼
+        │        ┌─────────────┐
+        │        │Telegram Bot │
+        │        │(сохраняет)  │
+        │        └─────────────┘
+        │
+        │ API Key (для сервисов)
+        ▼
+┌─────────────────┐
+│ Task Service    │ ──► вызывает user-service с API Key
+└─────────────────┘
+        │
+        │ JWT (от Telegram бота)
+        ▼
+┌─────────────────┐
+│ Task Service    │ ──► проверяет JWT локально (НЕ вызывает user-service)
+└─────────────────┘
 ```
 
 ### Типы авторизации
 
 ```
-| Тип запроса                 | Метод                   | Где используется                |
-| ------------------------    | ----------------------  | --------------------------      |
-| **Telegram → user-service** | JWT Bearer              | Привязка, профиль, проверки     |
-| **Сервис → сервис**         | API Key (gRPC metadata) | task-service, analytics-service |
-| **Внутренние методы**       | No auth (доверенные)    | Только воркеры и миграции       |
+| Тип запроса                             | Метод авторизации                | Где используется                                               |
+| ------------------------------------    | -------------------------------- | -------------------------------------------------------------- |
+| **Telegram → user-service** (привязка)  | Нет (публичный метод)            | `LinkTelegram`.                                                |
+| **Telegram → user-service** (остальные) | JWT Bearer                       | `GetMyProfile`, `UpdateMyProfile`, `GetOrganization`,          |
+|                                         |                                  | `CreateUser`, `GetUser`, `UpdateUser`, `DeleteUser`,           |
+|                                         |                                  | `ListUsers`, `Logout`.                                         |
+| **Telegram → task-service**             | JWT Bearer (проверяет локально)  | `CreateTask`, `UpdateStatus`, `GetMyTasks`.                    |
+| **Сервис → user-service** (валидация)   | API Key (gRPC metadata)          | `ValidateToken`.                                               |
+| **Сервис → user-service** (данные)      | API Key (gRPC metadata)          | `GetUserByID`, `GetUserByTelegram`, `BatchGetUsers`,           |
+|                                         |                                  | `ValidateUser`, `CheckUserExists`, `GetUsersByRole`,           |
+|                                         |                                  | `GetUserRole`, `GetAllUsers`.                                  |
+| **Сервис → сервис**                     | API Key (gRPC metadata)          | task-service → user-service,                                   |
+|                                         |                                  | analytics-service → user-service,                              |
+|                                         |                                  | notification-service → user-service.                           |
+| **Внутренние методы**                   | Нет (доверенные)                 | Миграции, воркеры, `SetupInitialOrganization`,                 |
+|                                         |                                  | `HealthCheck`.                                                 |
+```
+
+### Поток генерации и использования JWT
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ ЭТАП 1: Привязка Telegram (без авторизации)                     │
+├─────────────────────────────────────────────────────────────────┤
+│        Telegram Bot ──(email, telegram_id)──► LinkTelegram      │
+│                              │                                  │
+│                              ▼                                  │
+│                       User Service:                             │
+│ 1. Находит пользователя                                         │
+│ 2. Сохраняет telegram_id                                        │
+│ 3. ГЕНЕРИРУЕТ JWT                                               │
+│ 4. Сохраняет в Redis                                            │
+│                              │                                  │
+│                              ▼                                  │
+│      Telegram Bot ◄────(JWT token)──── LinkTelegramRespon       │
+│                              │                                  │
+│                              ▼                                  │
+│           Telegram Bot: Сохраняет JWT в свой Redis              │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│ ЭТАП 2: Запросы с JWT (Telegram бот → User Service)             │
+├─────────────────────────────────────────────────────────────────┤
+│ Telegram Bot:                                                   │
+│ 1. Сохраняет JWT в Redis (бот)                                  │
+│ 2. Добавляет JWT в metadata: authorization: Bearer <jwt>        │
+│ 3. Вызывает GetMyProfile / CreateUser / и т.д.                  │
+│                              │                                  │
+│                              ▼                                  │
+│ User Service:                                                   │
+│ 1. JWT Interceptor проверяет токен                              │
+│ 2. Извлекает user_id, role, organization_id из JWT              │
+│ 3. Проверяет права доступа                                      │
+│ 4. Выполняет запрос                                             │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│ ЭТАП 3: Запросы с API Key (Сервис → User Service)               │
+├─────────────────────────────────────────────────────────────────┤
+│ Task Service:                                                   │
+│ 1. Добавляет API Key в metadata:                                │
+│    x-service-name: task-service                                 │
+│    x-service-key: tk_secret_123                                 │
+│ 2. Вызывает GetUserByID / ValidateUser / и т.д.                 │
+│                              │                                  │
+│                              ▼                                  │
+│ User Service:                                                   │
+│ 1. Service Interceptor проверяет API Key                        │
+│ 2. Выполняет запрос                                             │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ## gRPC API
 
 ### Сервис
 
-```protobuf
+```
+protobuf
 service UserService {
-    // Интеграция с сервисом задач
-    rpc ValidateUser(ValidateUserRequest) returns (ValidateUserResponse);
-    rpc CheckUserExists(CheckUserExistsRequest) returns (CheckUserExistsResponse);
-    rpc GetUserByID(GetUserByIDRequest) returns (GetUserResponse);
-    rpc BatchGetUsers(BatchGetUsersRequest) returns (BatchGetUsersResponse);
+    // ==================== Публичные методы (без авторизации) ====================
 
-    // Пользователи (CRUD)
-    rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
-    rpc GetUser(GetUserRequest) returns (GetUserResponse);
-    rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse);
-    rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
-    rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+    // SetupInitialOrganization - первичная настройка системы
+    // Вызывается при первом запуске для создания организации и владельца
+    rpc SetupInitialOrganization(SetupInitialOrganizationRequest) returns (SetupInitialOrganizationResponse);
 
-    // Telegram привязка
+    // LinkTelegram - привязка Telegram аккаунта
+    // 🔥 ВОЗВРАЩАЕТ JWT токен для дальнейшей работы
     rpc LinkTelegram(LinkTelegramRequest) returns (LinkTelegramResponse);
-    rpc GetUserByTelegram(GetUserByTelegramRequest) returns (GetUserResponse);
+
+    // HealthCheck - проверка здоровья сервиса
+    rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+
+    // ==================== Методы с JWT авторизацией ====================
+
+    // GetMyProfile - получение своего профиля (JWT в metadata)
     rpc GetMyProfile(GetMyProfileRequest) returns (GetUserResponse);
 
-    // Аналитика
-    rpc GetAllUsers(GetAllUsersRequest) returns (GetAllUsersResponse);
-    rpc GetUsersByRole(GetUsersByRoleRequest) returns (GetUsersByRoleResponse);
-    rpc GetUserRole(GetUserRoleRequest returns (GetUserRoleResponse);
+    // UpdateMyProfile - обновление своего профиля (JWT в metadata)
+    rpc UpdateMyProfile(UpdateMyProfileRequest) returns (GetUserResponse);
 
-    // Организации
+    // GetOrganization - получение информации об организации (JWT в metadata)
     rpc GetOrganization(GetOrganizationRequest) returns (GetOrganizationResponse);
-    rpc SetupInitialOrganization(SetupInitialOrganizationRequest) returns (SetupInitialOrganizationResponse);
+
+    // Пользователи (CRUD) - требуют JWT + проверку прав
+    rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);      // Только MANAGER/OWNER
+    rpc GetUser(GetUserRequest) returns (GetUserResponse);               // OWNER/MANAGER видят всех, EMPLOYEE только себя
+    rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse);      // Разные права в зависимости от роли
+    rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);      // Только OWNER
+    rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);         // OWNER/MANAGER видят всех, EMPLOYEE только себя
+
+    // Logout - выход из системы (отзыв JWT токена)
+    rpc Logout(LogoutRequest) returns (LogoutResponse);
+
+    // ==================== Методы для сервисов (API Key) ====================
+
+    // ValidateToken - проверка JWT токена (для сервисов без JWT_SECRET)
+    rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
+
+    // Интеграция с сервисом задач
+    rpc ValidateUser(ValidateUserRequest) returns (ValidateUserResponse);           // Проверка пользователя для назначения
+    rpc CheckUserExists(CheckUserExistsRequest) returns (CheckUserExistsResponse); // Быстрая проверка существования
+    rpc GetUserByID(GetUserByIDRequest) returns (GetUserResponse);                 // Получение пользователя по ID
+    rpc BatchGetUsers(BatchGetUsersRequest) returns (BatchGetUsersResponse);       // Массовое получение пользователей
+    rpc GetUsersByRole(GetUsersByRoleRequest) returns (GetUsersByRoleResponse);    // Получение пользователей по роли
+
+    // Интеграция с сервисом аналитики
+    rpc GetAllUsers(GetAllUsersRequest) returns (GetAllUsersResponse);             // Все пользователи (для отчётов)
+    rpc GetUserRole(GetUserRoleRequest) returns (GetUserRoleResponse);             // Быстрое получение роли
+
+    // Интеграция с сервисом уведомлений
+    rpc GetUserByTelegram(GetUserByTelegramRequest) returns (GetUserResponse);     // Поиск по Telegram ID
 }
 ```
 
@@ -187,15 +296,19 @@ service UserService {
 
 ```
 Этап 1: Создание организации и владельца (через SQL скрипт или API)
+
 Этап 2: Привязка Telegram (через бота):
 -------- 1. Пользователь пишет боту /start
 -------- 2. Бот запрашивает email
--------- 3. Бот вызывает user-service.LinkTelegram(email, chatID)
--------- 4. User-service обновляет поле telegram_chat_id
+-------- 3. Бот вызывает user-service.LinkTelegram(email, telegram_id)
+-------- 4. User-service обновляет поле telegram_id
+-------- 5. 🔥 User-service ГЕНЕРИРУЕТ JWT и возвращает боту
+-------- 6. Бот сохраняет JWT в своём Redis для последующих запросов
+
 Этап 3: Добавление сотрудников (через бота или API):
 -------- 1. Руководитель через бота (/add_user) вводит email и имя
--------- 2. Бот вызывает user-service.CreateUser()
--------- 3. Создаётся пользователь с ролью employee, telegram_chat_id = null
+-------- 2. Бот вызывает user-service.CreateUser() (с JWT в metadata)
+-------- 3. Создаётся пользователь с ролью employee, telegram_id = null
 -------- 4. Сотрудник самостоятельно привязывает Telegram через /start
 ```
 
@@ -230,12 +343,9 @@ Rate limiting — через Redis
 
 Сервис корректно завершает работу:
 
-Перестаёт принимать новые gRPC запросы
-
-Завершает текущие запросы
-
-Закрывает соединения с БД и Redis
-
-Завершает процесс
+1. Перестаёт принимать новые gRPC запросы
+2. Завершает текущие запросы
+3. Закрывает соединения с БД и Redis
+4. Завершает процесс
 
 ### Health Check
