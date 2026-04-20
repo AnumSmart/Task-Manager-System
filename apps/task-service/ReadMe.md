@@ -12,6 +12,7 @@
 
 ## Структура
 
+```
 task-service/
 ├── cmd/
 │ └── main.go # точка входа
@@ -48,19 +49,23 @@ task-service/
 ├── go.mod
 ├── go.sum
 └── .env
+```
 
 ## Модель данных
 
 ### Основные сущности
 
+```
 | Сущность     | Описание                                                   |
 | ------------ | ---------------------------------------------------------- |
 | **Task**     | Задача: ID, название, описание, приоритет, дедлайн, статус |
 | **Assignee** | Связь задачи с исполнителем (один ко многим)               |
 | **History**  | Аудит изменений статусов                                   |
+```
 
 ### Статусы задачи
 
+```
 | Статус        | Описание                       |
 | ------------- | ------------------------------ |
 | `new`         | Создана, ожидает назначения    |
@@ -70,6 +75,7 @@ task-service/
 | `completed`   | Выполнена                      |
 | `rejected`    | Отклонена, требуется доработка |
 | `overdue`     | Просрочена                     |
+```
 
 ### Приоритеты
 
@@ -83,34 +89,13 @@ task-service/
 
 ```protobuf
 service TaskService {
-    // Создать задачу
-    rpc CreateTask(CreateTaskRequest) returns (CreateTaskResponse);
-
-    // Получить задачу по ID
-    rpc GetTask(GetTaskRequest) returns (GetTaskResponse);
-
-    // Обновить задачу
-    rpc UpdateTask(UpdateTaskRequest) returns (UpdateTaskResponse);
-
-    // Получить задачи пользователя (исполнителя)
-    rpc GetUserTasks(GetUserTasksRequest) returns (GetUserTasksResponse);
-
-    // Получить задачи организации (для руководителя)
-    rpc GetOrganizationTasks(GetOrganizationTasksRequest) returns (GetOrganizationTasksResponse);
-
-    // Изменить статус задачи
-    rpc UpdateTaskStatus(UpdateTaskStatusRequest) returns (UpdateTaskStatusResponse);
-
-    // Переназначить задачу
-    rpc ReassignTask(ReassignTaskRequest) returns (ReassignTaskResponse);
-
-    // Завершить задачу (принять работу)
-    rpc CompleteTask(CompleteTaskRequest) returns (CompleteTaskResponse);
+    // будет уточняться
 }
 ```
 
 ### События Kafka
 
+```
 Топик ---------- Событие ----------------------- Описание
 
 tasks.created TaskCreatedEvent --------------- Задача создана
@@ -118,6 +103,7 @@ tasks.assigned TaskAssignedEvent ------------- Задача назначена
 tasks.status.changed TaskStatusChangedEvent -- Статус изменён
 tasks.completed TaskCompletedEvent ----------- Задача завершена
 tasks.overdue TaskOverdueEvent --------------- Задача просрочена
+```
 
 ### Saga создания задачи
 
@@ -135,6 +121,7 @@ tasks.overdue TaskOverdueEvent --------------- Задача просрочена
 
 ### Конфигурация
 
+```
 Переменная ------------------------- Описание ------------------------- По умолчанию
 DB_HOST --------------------------- PostgreSQL ----------------------- хост localhost
 DB_PORT --------------------------- PostgreSQL -------------------------- порт 5432
@@ -146,6 +133,7 @@ REDIS_PORT -------------------------- Redis ----------------------------- пор
 KAFKA_BROKERS ------------------- Kafka брокеры ---------------------- localhost:9092
 GRPC_PORT ---------------------------- gRPC ---------------------------- порт 50051
 USER_SERVICE_GRPC ------------- Адрес user-service ------------------- localhost:50052
+```
 
 ### Graceful Shutdown
 
