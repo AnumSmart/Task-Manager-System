@@ -281,7 +281,6 @@ type CreateUserRequest struct {
 	Email          string `json:"email" validate:"required,email"`
 	FullName       string `json:"full_name" validate:"required,min=2,max=100"`
 	Role           Role   `json:"role" validate:"required,oneof=OWNER MANAGER EMPLOYEE"`
-	CreatedBy      string `json:"created_by" validate:"required"` // ID создающего пользователя
 }
 
 // GetUserRequest - DTO для получения пользователя

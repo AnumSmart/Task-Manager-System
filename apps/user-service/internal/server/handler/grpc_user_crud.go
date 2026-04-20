@@ -3,7 +3,13 @@ package handler
 import (
 	pb "api/gen/go/user/v1"
 	"context"
+	"errors"
 	"log"
+	"user-service/internal/converter"
+	"user-service/internal/domain"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // CreateUser - создание нового пользователя в организации
@@ -15,10 +21,49 @@ func (s *UserServerHandler) CreateUser(ctx context.Context, req *pb.CreateUserRe
 		return nil, ctx.Err()
 	default:
 	}
+	// Просто получаем userID из контекста (уже добавлен интерсептором)
+	/*
+		createdBy, ok := grpc.GetUserID(ctx)
+		if !ok {
+			return nil, status.Error(codes.Unauthenticated, "user not authenticated")
+		}
+	*/
+	createdBy := "owner" // работу с авторизацией нужно будет допилить!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+	// получаем доменную стркутуру пользователя через конвертер (grpc ---> doamin)
+
+	userToCreate := converter.ToDomainUserFromCreateRequest(req)
+	// проверка, то что не удалось сконвертировать пользователя
+	if userToCreate == nil {
+		return nil, status.Error(codes.InvalidArgument, "некорректные данные пользователя")
+	}
+
+	// создаём доменный запрос
+	domainRequest := domain.CreateUserRequest{
+		OrganizationID: userToCreate.OrganizationID,
+		Email:          userToCreate.Email,
+		FullName:       userToCreate.FullName,
+		Role:           userToCreate.Role,
+	}
+
+	// Вызываем сервис, передавая createdBy отдельно
+	user, err := s.UserServerService.User.CreateUser(ctx, &domainRequest, createdBy)
+	if err != nil {
+		if errors.Is(err, domain.ErrPermissionDenied) {
+			return nil, status.Error(codes.PermissionDenied, "недостаточно прав")
+		}
+		if errors.Is(err, domain.ErrUserAlreadyExists) {
+			return nil, status.Error(codes.AlreadyExists, "пользователь уже существует")
+		}
+		return nil, status.Error(codes.Internal, "ошибка создания пользователя")
+	}
 
 	log.Printf("📝 CreateUser вызван: email=%s, role=%v", req.GetEmail(), req.GetRole())
 
-	return &pb.CreateUserResponse{}, nil
+	return &pb.CreateUserResponse{
+		Success: true,
+		User:    converter.ToProtoUser(user),
+	}, nil
 }
 
 // GetUser - получение информации о пользователе по ID
