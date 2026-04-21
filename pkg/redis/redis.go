@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"global_models/global_cache"
 	"log"
-	configs "pkg/config"
+	configs "pkg/configs"
 
 	"github.com/go-redis/redis/v8"
 )

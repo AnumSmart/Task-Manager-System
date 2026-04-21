@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"global_models/global_db"
 
-	configs "pkg/config"
+	configs "pkg/configs"
 
 	"time"
 
