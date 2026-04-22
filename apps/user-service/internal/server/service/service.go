@@ -1,6 +1,9 @@
 package service
 
-import "user-service/internal/server/repository"
+import (
+	"pkg/auth"
+	"user-service/internal/server/repository"
+)
 
 // Services - агрегатор всех сервисов (бизнес-логика)
 type UserService struct {
@@ -12,9 +15,9 @@ type UserService struct {
 }
 
 // конструктор для сервиного слоя (в качестве параметра передаём составной репозиторий)
-func NewUserService(repo *repository.UserServiceRepository) *UserService {
+func NewUserService(repo *repository.UserServiceRepository, auth auth.AuthInterface) *UserService {
 	return &UserService{
-		User:         NewUserLayer(repo),
+		User:         NewUserLayer(repo, auth),
 		Organization: NewOrganisationLayer(repo),
 		Analytics:    NewAnalyticsLayer(repo),
 		Task:         NewTaskLayer(repo),
