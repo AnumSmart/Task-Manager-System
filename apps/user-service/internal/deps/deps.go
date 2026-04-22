@@ -6,6 +6,7 @@ import (
 	"global_models/global_cache"
 	"global_models/global_db"
 	"log"
+	"pkg/auth"
 	postgresdb "pkg/db"
 	"pkg/redis"
 	"sync"
@@ -22,8 +23,12 @@ type Container struct {
 	config *config.UserServiceConfig // config - конфигурация сервиса
 
 	// ==================== РЕСУРСЫ (Closeable) ====================
-	pgPool     global_db.Pool     // pgPool - пул соединений с PostgreSQL (интерфейс)
-	redisCache global_cache.Cache // redisCache - клиент для работы с Redis (интерфейс)
+	pgPool         global_db.Pool     // pgPool - пул соединений с PostgreSQL (интерфейс)
+	redisCache     global_cache.Cache // redisCache - клиент для работы с Redis (интерфейс)
+	redisBlackList global_cache.Cache // клиент для работы с Redis (интерфейс) - черный список для JWT
+
+	// ==================== AUTH LAYER ====================
+	authService auth.AuthInterface // НОВЫЙ: сервис авторизации (JWT)
 
 	// ==================== РЕПОЗИТОРИИ (СЛОИ ДОСТУПА К ДАННЫМ) ====================
 	dbRepo    *repository.UserServiceDBRepository    // dbRepo - репозиторий для работы с базой данных (PostgreSQL)
@@ -50,9 +55,10 @@ func NewContainer(ctx context.Context, cfg *config.UserServiceConfig) (*Containe
 	// пытаемся отловить панику
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Printf("Panic inside DI container constructor: %v\n", r)
+			fmt.Printf("panic inside DI container constructor: %v\n", r)
 		}
 	}()
+
 	// создаём начальный экземпляр контейнера, чтобы для его наполнения вызывать инициализацию зависимостей
 	c := &Container{
 		config:  cfg,
@@ -64,25 +70,31 @@ func NewContainer(ctx context.Context, cfg *config.UserServiceConfig) (*Containe
 		return nil, fmt.Errorf("init resources: %w", err)
 	}
 
-	// 2. Инициализация репозиториев
+	// 2. Инициализация Auth сервиса
+	if err := c.initAuthService(); err != nil {
+		c.Close()
+		return nil, fmt.Errorf("init auth service: %w", err)
+	}
+
+	// 3. Инициализация репозиториев
 	if err := c.initRepositories(); err != nil {
 		c.Close()
 		return nil, fmt.Errorf("init repositories: %w", err)
 	}
 
-	// 3. Инициализация сервисов
+	// 4. Инициализация сервисов
 	if err := c.initServices(); err != nil {
 		c.Close()
 		return nil, fmt.Errorf("init services: %w", err)
 	}
 
-	// 4. Инициализация хендлеров
+	// 5. Инициализация хендлеров
 	if err := c.initHandlers(); err != nil {
 		c.Close()
 		return nil, fmt.Errorf("init handlers: %w", err)
 	}
 
-	// 5. Инициализация gRPC сервера
+	// 6. Инициализация gRPC сервера
 	if err := c.initGRPCServer(); err != nil {
 		c.Close()
 		return nil, fmt.Errorf("init grpc server: %w", err)
@@ -101,7 +113,7 @@ func (c *Container) addCloser(closer func() error) {
 // Сервер не закрывается здесь!
 func (c *Container) Close() error {
 	c.closeOnce.Do(func() {
-		log.Println("Closing container resources (DB, Redis, etc)...")
+		log.Println("closing container resources (DB, Redis, etc)...")
 
 		var errs []error
 
@@ -115,7 +127,7 @@ func (c *Container) Close() error {
 		if len(errs) > 0 {
 			c.closeErr = fmt.Errorf("close errors: %v", errs)
 		} else {
-			log.Println("Container resources closed successfully")
+			log.Println("container resources closed successfully")
 		}
 	})
 
@@ -141,10 +153,10 @@ func (c *Container) initResources(ctx context.Context) error {
 		return nil
 	})
 
-	// Redis
+	// Redis (cache)
 	redisCache, err := redis.NewRedisCacheRepository(ctx, c.config.RedisConf)
 	if err != nil {
-		return fmt.Errorf("create redis cache: %w", err)
+		return fmt.Errorf("failed to create redis cache: %w", err)
 	}
 	// если редис успешно создан, инициализируем его в структуре контейнера
 	c.redisCache = redisCache
@@ -154,9 +166,55 @@ func (c *Container) initResources(ctx context.Context) error {
 		if err := c.redisCache.Close(); err != nil {
 			return fmt.Errorf("redis close: %w", err)
 		}
-		log.Println("Redis connection closed")
+		log.Println("Redis Cache connection closed")
 		return nil
 	})
+
+	// Redis (blacklist)
+	redisBlackList, err := redis.NewRedisCacheRepository(ctx, c.config.RedisBlackListConf)
+	if err != nil {
+		return fmt.Errorf("failed to create redis blacklist: %w", err)
+	}
+	// если редис успешно создан, инициализируем его в структуре контейнера
+	c.redisBlackList = redisBlackList
+
+	// регистрируем функцию освобождения ресурсов
+	c.addCloser(func() error {
+		if err := c.redisBlackList.Close(); err != nil {
+			return fmt.Errorf("redis close: %w", err)
+		}
+		log.Println("Redis BlackList connection closed")
+		return nil
+	})
+	return nil
+}
+
+// внутренний метод инициализации логики авторизации
+func (c *Container) initAuthService() error {
+	// проверка того, что blacklist != nil
+	if c.redisBlackList == nil {
+		return fmt.Errorf("Redis blacklist could not be nil")
+	}
+
+	// создаём конфиг для провайдера
+	providerConf := auth.ProviderConfig{
+		EnableBlacklist: true,
+	}
+
+	// создаём провайдера
+	provider := auth.NewProvider(c.config.JWTConfig)
+	provider = provider.WithCache(c.redisBlackList)
+	provider = provider.WithConfig(providerConf)
+
+	authService, err := provider.Build()
+	if err != nil {
+		return fmt.Errorf("failed to create authService: %w", err)
+	}
+
+	// если authService успешно создан, инициализируем его в структуре контейнера
+	c.authService = authService
+
+	log.Println("✓ Auth service initialized")
 
 	return nil
 }
@@ -177,7 +235,7 @@ func (c *Container) initRepositories() error {
 	cacheRepo, err := repository.NewUserServiceCacheRepo(c.redisCache, "UserService")
 	// проверка на ошибку или на nil репозиторий
 	if err != nil || cacheRepo == nil {
-		return fmt.Errorf("failed to create cahce repository")
+		return fmt.Errorf("failed to create cache repository")
 	}
 
 	// если все успешно, то инициализируем в структуре контейнера
@@ -195,15 +253,16 @@ func (c *Container) initRepositories() error {
 	return nil
 }
 
-// внутренний метод инициализации сервисов
+// initServices инициализирует сервисы с внедрением auth
 func (c *Container) initServices() error {
-	userService := service.NewUserService(c.repo)
+	// Передаем auth сервис в UserService
+	userService := service.NewUserService(c.repo, c.authService)
 	if userService == nil {
 		return fmt.Errorf("failed to create user service")
 	}
 
-	// если все успешно - инициализируем зависимость в контейнере
 	c.userService = userService
+	log.Println("✓ User service initialized with auth")
 
 	return nil
 }
@@ -221,17 +280,23 @@ func (c *Container) initHandlers() error {
 	return nil
 }
 
-// внутренний метод реализации grpc сервера
+// initGRPCServer инициализирует gRPC сервер с JWT interceptors
 func (c *Container) initGRPCServer() error {
-	// Извлекаем конфиг gRPC из основного конфига
 	grpcConfig := c.config.GRPCServerConfig
 
-	// Создаем сервер, передавая конфиг и хендлер
-	c.grpcServer = server.NewGRCPUserServer(grpcConfig, c.userHandler)
+	// Создаем сервер с JWT interceptor
+	// Для этого нужно обновить server.NewGRCPUserServer, чтобы он принимал interceptors
+	c.grpcServer = server.NewGRCPUserServer(
+		grpcConfig,
+		c.userHandler,
+		c.authService, // Передаем auth для интерсепторов
+	)
+
 	if c.grpcServer == nil {
 		return fmt.Errorf("failed to create gRPC server")
 	}
 
+	log.Println("✓ gRPC server initialized with JWT interceptor")
 	return nil
 }
 
@@ -244,6 +309,11 @@ func (c *Container) GetUserHandler() *handler.UserServerHandler {
 	return c.userHandler
 }
 
+// GetAuthService возвращает auth сервис (если нужен в других местах)
+func (c *Container) GetAuthService() auth.AuthInterface {
+	return c.authService
+}
+
 // HealthCheck проверяет здоровье зависимостей
 func (c *Container) HealthCheck(ctx context.Context) error {
 	// Проверка PostgreSQL
@@ -253,8 +323,15 @@ func (c *Container) HealthCheck(ctx context.Context) error {
 
 	// Проверка Redis
 	if err := c.redisCache.Set(ctx, "health_check", []byte("ok"), 1); err != nil {
-		return fmt.Errorf("redis health check failed: %w", err)
+		return fmt.Errorf("redis cache health check failed: %w", err)
 	}
 
+	// Проверка Auth сервиса (Redis blacklist)
+	if c.authService != nil {
+		// Простая проверка через валидацию тестового токена или ping Redis
+		if err := c.authService.HealthCheck(ctx); err != nil {
+			return err
+		}
+	}
 	return nil
 }

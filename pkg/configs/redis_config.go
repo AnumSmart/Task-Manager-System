@@ -28,147 +28,151 @@ type RedisConfig struct {
 }
 
 // NewRedisConfigFromEnv создает конфиг Redis из переменных окружения
+// prefix - префикс переменных окружения (например, "REDIS_CACHE" или "REDIS_BLACKLIST")
 // Возвращает ошибку, если обязательные поля не заполнены или значения некорректны
-func NewRedisConfigFromEnv() (*RedisConfig, error) {
+func NewRedisConfigFromEnv(prefix string) (*RedisConfig, error) {
+	// Проверка: префикс не должен быть пустым
+	if prefix == "" {
+		return nil, fmt.Errorf("prefix cannot be empty")
+	}
+
 	var errors []string
 
-	// Получаем значени хоста (есть дефолтные значения)
-	host, err := getRequiredEnv("REDIS_HOST")
+	// Функция-помощник для формирования имени переменной
+	makeEnvName := func(suffix string) string {
+		return prefix + "_" + suffix
+	}
+
+	// Получаем значение хоста
+	host, err := getRequiredEnv(makeEnvName("HOST"))
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
 
-	// Получаем значени порта (есть дефолтные значения)
-	port, err := getRequiredEnv("REDIS_PORT")
+	// Получаем значение порта
+	port, err := getRequiredEnv(makeEnvName("PORT"))
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
 
-	// Получаем значени пароля (есть дефолтные значения)
-	pass, err := getRequiredEnv("REDIS_PASSWORD")
+	// Получаем значение пароля
+	pass, err := getRequiredEnv(makeEnvName("PASSWORD"))
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
 
 	// Если есть ошибки в обязательных полях - возвращаем сразу
 	if len(errors) > 0 {
-		return nil, fmt.Errorf("missing required environment variables: %s", strings.Join(errors, ", "))
+		return nil, fmt.Errorf("missing required environment variables for prefix %q: %s", prefix, strings.Join(errors, ", "))
 	}
 
-	// Валидируем DB (Redis поддерживает 0-15 обычно, используем дэфолт)
-	dbCount, err := getEnvAsInt32WithValidation("REDIS_DB", 5, 0, 15)
+	// Валидируем DB (Redis поддерживает 0-15 обычно, используем дефолт 0)
+	dbCount, err := getEnvAsInt32WithValidation(makeEnvName("DB"), 0, 0, 15)
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
 
 	// Валидируем PoolSize (разумные границы 1-1000)
-	poolSize, err := getEnvAsInt32WithValidation("REDIS_POOL_SIZE", 100, 1, 1000)
+	poolSize, err := getEnvAsInt32WithValidation(makeEnvName("POOL_SIZE"), 100, 1, 1000)
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
 
-	// Валидируем MinIdleConns (не может быть больше PoolSize)
-	minIdleConns, err := getEnvAsInt32WithValidation("REDIS_MIN_IDLE_CONNS", 100, 1, 1000)
+	// Валидируем MinIdleConns
+	minIdleConns, err := getEnvAsInt32WithValidation(makeEnvName("MIN_IDLE_CONNS"), 20, 1, 1000)
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
 
 	// Дополнительная проверка: MinIdleConns <= PoolSize
 	if minIdleConns > poolSize {
-		errors = append(errors, fmt.Sprintf("REDIS_MIN_IDLE_CONNS (%d) cannot be greater than REDIS_POOL_SIZE (%d)", minIdleConns, poolSize))
+		errors = append(errors, fmt.Sprintf("%s_MIN_IDLE_CONNS (%d) cannot be greater than %s_POOL_SIZE (%d)", prefix, minIdleConns, prefix, poolSize))
 	}
 
 	// Загружаем таймауты с валидацией
-
-	dialTimeout, err := getEnvAsDurationWithValidation("REDIS_DIAL_TIMEOUT", 5*time.Second, 1*time.Second, 30*time.Second)
+	dialTimeout, err := getEnvAsDurationWithValidation(makeEnvName("DIAL_TIMEOUT"), 5*time.Second, 1*time.Second, 30*time.Second)
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
 
-	readTimeout, err := getEnvAsDurationWithValidation("REDIS_DIAL_TIMEOUT", 3*time.Second, 100*time.Millisecond, 30*time.Second)
+	readTimeout, err := getEnvAsDurationWithValidation(makeEnvName("READ_TIMEOUT"), 3*time.Second, 100*time.Millisecond, 30*time.Second)
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
 
-	writeTimeout, err := getEnvAsDurationWithValidation("REDIS_WRITE_TIMEOUT", 3*time.Second, 100*time.Millisecond, 30*time.Second)
+	writeTimeout, err := getEnvAsDurationWithValidation(makeEnvName("WRITE_TIMEOUT"), 3*time.Second, 100*time.Millisecond, 30*time.Second)
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
 
-	idleTimeout, err := getEnvAsDurationWithValidation("REDIS_IDLE_TIMEOUT", 5*time.Minute, 1*time.Minute, 24*time.Hour)
+	idleTimeout, err := getEnvAsDurationWithValidation(makeEnvName("IDLE_TIMEOUT"), 5*time.Minute, 1*time.Minute, 24*time.Hour)
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
 
-	poolTimeout, err := getEnvAsDurationWithValidation("REDIS_POOL_TIMEOUT", 4*time.Minute, 1*time.Minute, 7*time.Minute)
+	poolTimeout, err := getEnvAsDurationWithValidation(makeEnvName("POOL_TIMEOUT"), 4*time.Minute, 1*time.Minute, 7*time.Minute)
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
 
-	maxConnAge, err := getEnvAsDurationWithValidation("REDIS_MAX_CON_AGE", 4*time.Minute, 1*time.Minute, 50*time.Minute)
+	maxConnAge, err := getEnvAsDurationWithValidation(makeEnvName("MAX_CON_AGE"), 30*time.Minute, 1*time.Minute, 50*time.Minute)
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
 
-	// Валидируем MinIdleConns (не может быть больше PoolSize)
-	maxRetries, err := getEnvAsInt32WithValidation("REDIS_MAX_RETRIES", 2, 0, 3)
+	maxRetries, err := getEnvAsInt32WithValidation(makeEnvName("MAX_RETRIES"), 2, 0, 3)
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
 
-	minRetryBackoff, err := getEnvAsDurationWithValidation("REDIS_MIN_RETRY_BACKOFF_MS", 100*time.Millisecond, 50*time.Millisecond, 300*time.Millisecond)
+	minRetryBackoff, err := getEnvAsDurationWithValidation(makeEnvName("MIN_RETRY_BACKOFF_MS"), 100*time.Millisecond, 50*time.Millisecond, 300*time.Millisecond)
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
 
-	maxRetryBackoff, err := getEnvAsDurationWithValidation("REDIS_MAX_RETRY_BACKOFF_MS", 1000*time.Millisecond, 512*time.Millisecond, 2000*time.Millisecond)
+	maxRetryBackoff, err := getEnvAsDurationWithValidation(makeEnvName("MAX_RETRY_BACKOFF_MS"), 1000*time.Millisecond, 512*time.Millisecond, 2000*time.Millisecond)
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
 
 	// Если есть ошибки валидации - возвращаем их
 	if len(errors) > 0 {
-		return nil, fmt.Errorf("configuration errors:\n%s", strings.Join(errors, "\n"))
+		return nil, fmt.Errorf("configuration errors for prefix %q:\n%s", prefix, strings.Join(errors, "\n"))
 	}
 
 	return &RedisConfig{
-		Host:            host,            // Хост, где расположен redis
-		Port:            port,            // Порт для подключения
-		Password:        pass,            // Пароль
-		DB:              dbCount,         // 16 пронумерованных баз данных (0-15 по умолчанию), загружаем номер
-		PoolSize:        poolSize,        // Максимальное количество одновременных TCP-соединений, которые клиент может открыть к Redis
-		MinIdleConns:    minIdleConns,    // Минимальное количество соединений, которое нужно держать открытыми
-		MaxRetries:      maxRetries,      // Количество повторных запросов при временных сетевых сбоях
-		DialTimeout:     dialTimeout,     // Максимальное время, которое клиент ждет при установке нового TCP-соединения с Redis сервером
-		ReadTimeout:     readTimeout,     // Таймаут чтения ответа от Redis
-		WriteTimeout:    writeTimeout,    // Таймаут отправки команды в Redis
-		IdleTimeout:     idleTimeout,     // Таймаут, по истечении которого закрывается неиспользуемое соединение
-		PoolTimeout:     poolTimeout,     // Таймаут ожидания свободного соединения
-		MaxConnAge:      maxConnAge,      // Соединение живет максимум заданное время в пуле соединений
-		MinRetryBackOff: minRetryBackoff, // Нижняя граница интервала попыток
-		MaxRetryBackOff: maxRetryBackoff, // Верхняя граница интервала попыток
+		Host:            host,
+		Port:            port,
+		Password:        pass,
+		DB:              dbCount,
+		PoolSize:        poolSize,
+		MinIdleConns:    minIdleConns,
+		MaxRetries:      maxRetries,
+		DialTimeout:     dialTimeout,
+		ReadTimeout:     readTimeout,
+		WriteTimeout:    writeTimeout,
+		IdleTimeout:     idleTimeout,
+		PoolTimeout:     poolTimeout,
+		MaxConnAge:      maxConnAge,
+		MinRetryBackOff: minRetryBackoff,
+		MaxRetryBackOff: maxRetryBackoff,
 	}, nil
 }
 
 // для создания клиента redis необходимо передать указатель на структуру опций: *redis.Options
 func (r *RedisConfig) ToRedisOptions() *redis.Options {
 	return &redis.Options{
-		Addr:     r.Host + ":" + r.Port,
-		Password: r.Password,
-		DB:       int(r.DB),
-		// Пул соединений (зависит от нагрузки)
-		PoolSize:     int(r.PoolSize),     // 50-200 для большинства приложений
-		MinIdleConns: int(r.MinIdleConns), // 20-30% от PoolSize
-		IdleTimeout:  r.IdleTimeout,       // 5-10 минут
-		PoolTimeout:  r.PoolTimeout,       // Много конкурентных запросов
-		MaxConnAge:   r.MaxConnAge,        // Обычно около 30 мин
-
-		// Таймауты
-		DialTimeout:  r.DialTimeout,
-		ReadTimeout:  r.ReadTimeout,
-		WriteTimeout: r.WriteTimeout,
-
-		// Повторы
+		Addr:            r.Host + ":" + r.Port,
+		Password:        r.Password,
+		DB:              int(r.DB),
+		PoolSize:        int(r.PoolSize),
+		MinIdleConns:    int(r.MinIdleConns),
+		IdleTimeout:     r.IdleTimeout,
+		PoolTimeout:     r.PoolTimeout,
+		MaxConnAge:      r.MaxConnAge,
+		DialTimeout:     r.DialTimeout,
+		ReadTimeout:     r.ReadTimeout,
+		WriteTimeout:    r.WriteTimeout,
 		MaxRetries:      int(r.MaxRetries),
 		MinRetryBackoff: r.MinRetryBackOff,
 		MaxRetryBackoff: r.MaxRetryBackOff,

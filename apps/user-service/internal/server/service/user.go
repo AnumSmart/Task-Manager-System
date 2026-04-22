@@ -4,21 +4,24 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"pkg/auth"
 	"user-service/internal/domain"
 	"user-service/internal/server/repository"
 )
 
 // UserServiceLayer - структура сервисного слоя, которая отвечает за работу с пользователями
 type UserServiceLayer struct {
-	UserRepo repository.UserDBRepository    // использую интерфейс из repo слоя
-	Cache    repository.UserCacheRepository // использую интерфейс из repo слоя
+	UserRepo    repository.UserDBRepository    // использую интерфейс из repo слоя
+	Cache       repository.UserCacheRepository // использую интерфейс из repo слоя
+	authService auth.AuthInterface             // логика авторизации из пакета pkg/auth
 }
 
 // NewUserLayer - конструктор для части сервисного слоя (пользователи)
-func NewUserLayer(repo *repository.UserServiceRepository) *UserServiceLayer {
+func NewUserLayer(repo *repository.UserServiceRepository, authService auth.AuthInterface) *UserServiceLayer {
 	return &UserServiceLayer{
-		UserRepo: repo.DBRepo,
-		Cache:    repo.CacheRepo,
+		UserRepo:    repo.DBRepo,
+		Cache:       repo.CacheRepo,
+		authService: authService,
 	}
 }
 
