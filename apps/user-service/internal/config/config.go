@@ -3,16 +3,18 @@ package config
 import (
 	"fmt"
 	"os"
-	configs "pkg/config"
+	configs "pkg/configs"
 
 	"github.com/joho/godotenv"
 )
 
 // Конфигурация сервиса пользователей
 type UserServiceConfig struct {
-	GRPCServerConfig *configs.GRPCServerConfig
-	PostgresDBConfig *configs.PostgresDBConfig
-	RedisConf        *configs.RedisConfig
+	GRPCServerConfig   *configs.GRPCServerConfig // конфиг для grpc сервера (загружается в шаблон из pkg, данные берутся из .yml файла)
+	PostgresDBConfig   *configs.PostgresDBConfig // конфиг для экземпляра POSTGRES (загружается в шаблон из pkg, данные берутся из .env файла)
+	RedisConf          *configs.RedisConfig      // конфиг для экземпляра REDIS (cache) (загружается в шаблон из pkg, данные берутся из .env файла)
+	RedisBlackListConf *configs.RedisConfig      // конфиг для экземпляра REDIS (blacklist) (загружается в шаблон из pkg, данные берутся из .env файла)
+	JWTConfig          *configs.JWTConfig        // конфиг для работы с JWT
 }
 
 // путь к .env файлу
@@ -40,14 +42,33 @@ func LoadConfig() (*UserServiceConfig, error) {
 	}
 
 	// загружаем данные из .env файла для redisConfig
-	redisConfig, err := configs.NewRedisConfigFromEnv()
+	redisConfig, err := configs.NewRedisConfigFromEnv("REDIS_CACHE")
 	if err != nil {
 		return nil, fmt.Errorf("Error during loading config: %s\n", err.Error())
 	}
 
+	// загружаем данные из .env файла для blacklistConfig
+	blacklistConfig, err := configs.NewRedisConfigFromEnv("REDIS_BLACKLIST")
+	if err != nil {
+		return nil, fmt.Errorf("Error during loading config: %s\n", err.Error())
+	}
+
+	// загружаем JWT конфигурацию из .env файла
+	jwtConfig, err := configs.LoadJWTConfig()
+	if err != nil {
+		return nil, fmt.Errorf("Error during loading JWT config: %s\n", err.Error())
+	}
+
+	// валидируем JWT конфигурацию
+	if err := jwtConfig.Validate(); err != nil {
+		return nil, fmt.Errorf("Invalid JWT config: %s\n", err.Error())
+	}
+
 	return &UserServiceConfig{
-		GRPCServerConfig: grpcServerConfig,
-		PostgresDBConfig: postgresDBConfig,
-		RedisConf:        redisConfig,
+		GRPCServerConfig:   grpcServerConfig,
+		PostgresDBConfig:   postgresDBConfig,
+		RedisConf:          redisConfig,
+		RedisBlackListConf: blacklistConfig,
+		JWTConfig:          jwtConfig,
 	}, nil
 }
