@@ -1,0 +1,149 @@
+package jwt
+
+import (
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+
+	"pkg/configs" // используем общий пакет конфигурации
+)
+
+// Manager управляет JWT операциями
+type Manager struct {
+	config *configs.JWTConfig
+}
+
+// NewManager создает новый JWT менеджер
+func NewManager(cfg *configs.JWTConfig) (*Manager, error) {
+	if cfg == nil {
+		return nil, ErrInvalidConfig
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+
+	return &Manager{
+		config: cfg,
+	}, nil
+}
+
+// GenerateTokenPair создает пару access и refresh токенов
+func (m *Manager) GenerateTokenPair(userID, role, organizationID string) (*TokenPair, error) {
+	// Генерируем access token
+	accessToken, err := m.generateToken(userID, role, organizationID, m.config.AccessTokenTTL, AccessToken)
+	if err != nil {
+		return nil, fmt.Errorf("generate access token: %w", err)
+	}
+
+	// Генерируем refresh token
+	refreshToken, err := m.generateToken(userID, role, organizationID, m.config.RefreshTokenTTL, RefreshToken)
+	if err != nil {
+		return nil, fmt.Errorf("generate refresh token: %w", err)
+	}
+
+	return &TokenPair{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		ExpiresIn:    int64(m.config.AccessTokenTTL.Seconds()),
+	}, nil
+}
+
+// generateToken создает один JWT токен
+func (m *Manager) generateToken(userID, role, organizationID string, ttl time.Duration, tokenType TokenType) (string, error) {
+	now := time.Now()
+	claims := &CustomClaims{
+		UserID:         userID,
+		Role:           role,
+		OrganizationID: organizationID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        uuid.New().String(),
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
+			NotBefore: jwt.NewNumericDate(now),
+			Issuer:    m.config.Issuer,
+			Subject:   userID,
+			Audience:  []string{string(tokenType)},
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
+	tokenString, err := token.SignedString([]byte(m.config.SecretKey))
+	if err != nil {
+		return "", fmt.Errorf("sign token: %w", err)
+	}
+
+	return tokenString, nil
+}
+
+// ValidateToken проверяет и парсит JWT токен
+func (m *Manager) ValidateToken(tokenString string) (*CustomClaims, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(m.config.SecretKey), nil
+	})
+
+	if err != nil {
+		switch {
+		case errors.Is(err, jwt.ErrTokenMalformed):
+			return nil, fmt.Errorf("malformed token: %w", err)
+		case errors.Is(err, jwt.ErrTokenSignatureInvalid):
+			return nil, fmt.Errorf("invalid signature: %w", err)
+		case errors.Is(err, jwt.ErrTokenExpired):
+			return nil, ErrExpiredToken
+		case errors.Is(err, jwt.ErrTokenNotValidYet):
+			return nil, fmt.Errorf("token not valid yet: %w", err)
+		default:
+			return nil, fmt.Errorf("parse token: %w", err)
+		}
+	}
+
+	claims, ok := token.Claims.(*CustomClaims)
+	if !ok || !token.Valid {
+		return nil, ErrInvalidToken
+	}
+
+	if err := claims.Validate(); err != nil {
+		return nil, err
+	}
+
+	return claims, nil
+}
+
+// RefreshAccessToken создает новый access token из refresh token
+func (m *Manager) RefreshAccessToken(refreshTokenString string) (*TokenPair, error) {
+	claims, err := m.ValidateToken(refreshTokenString)
+	if err != nil {
+		return nil, fmt.Errorf("validate refresh token: %w", err)
+	}
+
+	if !claims.IsRefreshToken() {
+		return nil, ErrNotRefreshToken
+	}
+
+	return m.GenerateTokenPair(claims.UserID, claims.Role, claims.OrganizationID)
+}
+
+// ExtractTokenFromBearer извлекает токен из строки "Bearer <token>"
+func (m *Manager) ExtractTokenFromBearer(authHeader string) (string, error) {
+	if authHeader == "" {
+		return "", ErrMissingToken
+	}
+
+	const prefix = "Bearer "
+	if len(authHeader) < len(prefix) || authHeader[:len(prefix)] != prefix {
+		return "", ErrInvalidAuthHeader
+	}
+
+	token := authHeader[len(prefix):]
+	if token == "" {
+		return "", ErrEmptyToken
+	}
+
+	return token, nil
+}
