@@ -89,17 +89,21 @@ func (m *Manager) ValidateToken(tokenString string) (*CustomClaims, error) {
 	})
 
 	if err != nil {
+		// Возвращаем кастомные ошибки для каждого случая
 		switch {
 		case errors.Is(err, jwt.ErrTokenMalformed):
-			return nil, fmt.Errorf("malformed token: %w", err)
+			return nil, ErrMalformedToken
 		case errors.Is(err, jwt.ErrTokenSignatureInvalid):
-			return nil, fmt.Errorf("invalid signature: %w", err)
+			return nil, ErrInvalidSignature
 		case errors.Is(err, jwt.ErrTokenExpired):
 			return nil, ErrExpiredToken
 		case errors.Is(err, jwt.ErrTokenNotValidYet):
-			return nil, fmt.Errorf("token not valid yet: %w", err)
+			return nil, ErrTokenNotValidYet
+		case errors.Is(err, ErrUnexpectedSigningMethod):
+			return nil, ErrUnexpectedSigningMethod
 		default:
-			return nil, fmt.Errorf("parse token: %w", err)
+			// Для любых других ошибок парсинга (например, проблемы с claims)
+			return nil, ErrParseToken
 		}
 	}
 

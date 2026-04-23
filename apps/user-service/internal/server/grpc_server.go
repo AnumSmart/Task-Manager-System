@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"log"
 	"net"
-	configs "pkg/config"
+	"pkg/auth"
+	configs "pkg/configs"
 	"user-service/internal/server/handler"
 	"user-service/internal/server/interceptors"
 
@@ -17,16 +18,18 @@ import (
 
 // структура grpc сервера для user-service
 type GRPCUserServer struct { // Встраиваем для обратной совместимости
-	server  *grpc.Server               // Сам сервер, который слушает входящие подключения
-	config  *configs.GRPCServerConfig  // конфиг grpc сервера
-	Handler *handler.UserServerHandler // Бизнес-логика для сообщений (интерфейс из сервисного слоя)
+	server      *grpc.Server               // Сам сервер, который слушает входящие подключения
+	config      *configs.GRPCServerConfig  // конфиг grpc сервера
+	Handler     *handler.UserServerHandler // Бизнес-логика для сообщений (интерфейс из сервисного слоя)
+	AuthService auth.AuthInterface
 }
 
 // NewGRPCUserServer создает новый gRPC сервер (конструктор)
-func NewGRCPUserServer(conf *configs.GRPCServerConfig, handler *handler.UserServerHandler) *GRPCUserServer {
+func NewGRCPUserServer(conf *configs.GRPCServerConfig, handler *handler.UserServerHandler, auth auth.AuthInterface) *GRPCUserServer {
 	return &GRPCUserServer{
-		Handler: handler,
-		config:  conf,
+		Handler:     handler,
+		config:      conf,
+		AuthService: auth,
 	}
 }
 
@@ -56,8 +59,9 @@ func (s *GRPCUserServer) Run() error {
 
 		// Chain объединяет несколько интерсепторов
 		grpc.ChainUnaryInterceptor(
-			interceptors.RecoveryInterceptor, // 1. Ловит паники из всех следующих
-			interceptors.LoggingInterceptor,  // 2. Логирует запрос
+			interceptors.RecoveryInterceptor,                // 1. САМЫЙ ПЕРВЫЙ - ловит паники
+			interceptors.UnaryJWTInterceptor(s.AuthService), // 2. JWT проверка
+			interceptors.LoggingInterceptor,                 // 3. Логирование (уже знает user_id)
 			// сюда можно добавить другие интерсепторы:
 			// interceptors.AuthInterceptor,
 			// interceptors.RateLimitInterceptor,
