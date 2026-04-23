@@ -45,4 +45,19 @@ var (
 
 	// ErrInvalidRefreshTTL - неверный TTL для refresh токена
 	ErrInvalidRefreshTTL = errors.New("refresh token TTL must be positive")
+
+	// ErrMalformedToken - токен имеет неправильный формат (не 3 части, невалидный base64 и т.д.)
+	ErrMalformedToken = errors.New("malformed token")
+
+	// ErrInvalidSignature - подпись токена недействительна
+	ErrInvalidSignature = errors.New("invalid token signature")
+
+	// ErrTokenNotValidYet - токен еще не активен (проверка nbf claim)
+	ErrTokenNotValidYet = errors.New("token is not valid yet")
+
+	// ErrUnexpectedSigningMethod - неожиданный метод подписи (например, ожидали HMAC, а получили RSA)
+	ErrUnexpectedSigningMethod = errors.New("unexpected signing method")
+
+	// ErrParseToken - общая ошибка парсинга токена (когда не можем классифицировать)
+	ErrParseToken = errors.New("failed to parse token")
 )
