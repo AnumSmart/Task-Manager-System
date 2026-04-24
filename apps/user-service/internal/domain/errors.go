@@ -24,4 +24,5 @@ var (
 	ErrOrganizationNotActive     = errors.New("organization is not active")
 	ErrOnlyOwnerCanModify        = errors.New("only owner can modify organization")
 	ErrInvalidOrganizationID     = errors.New("invalid organization id")
+	ErrOrganizationHasUsers      = errors.New("organization still has users")
 )

@@ -93,18 +93,19 @@ func ToDomainUser(pbUser *commonv1.User) *domain.User {
 
 // ToDomainUserFromCreateRequest создает доменную модель из CreateUserRequest
 // Обратите внимание: CreateUserRequest из user.v1, но User внутри - из common.v1
-func ToDomainUserFromCreateRequest(req *userv1.CreateUserRequest) *domain.User {
+func ToDomainUserFromCreateRequest(req *userv1.CreateUserRequest, organizationID string) *domain.User {
 	if req == nil {
 		return nil
 	}
 
 	user := &domain.User{
-		Email:     req.GetEmail(),
-		FullName:  req.GetFullName(),
-		Role:      toDomainRole(req.GetRole()),
-		Status:    domain.UserStatusActive, // Новые пользователи активны по умолчанию
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Email:          req.GetEmail(),
+		FullName:       req.GetFullName(),
+		Role:           toDomainRole(req.GetRole()),
+		Status:         domain.UserStatusActive, // Новые пользователи активны по умолчанию
+		OrganizationID: organizationID,          // ← приходит из JWT
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
 	}
 
 	if req.TelegramId != nil {
