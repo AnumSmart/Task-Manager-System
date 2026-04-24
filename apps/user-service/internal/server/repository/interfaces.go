@@ -22,6 +22,12 @@ type UserCacheRepository interface {
 	Delete(ctx context.Context, key string) error
 }
 
+type OrganizationDBRepository interface {
+	ExistsAny(ctx context.Context) (bool, error)
+	CreateOrg(ctx context.Context, org *domain.Organization) error
+	DeleteOrg(ctx context.Context, orgID string) error
+}
+
 // Убеждаемся, что структуры реализуют интерфейсы
 var _ UserDBRepository = (*UserServiceDBRepository)(nil)
 var _ UserCacheRepository = (*UserServiceCacheRepository)(nil)
