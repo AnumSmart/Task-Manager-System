@@ -2,11 +2,14 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"pkg/auth"
 	"user-service/internal/domain"
 	"user-service/internal/server/repository"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // UserServiceLayer - структура сервисного слоя, которая отвечает за работу с пользователями
@@ -102,6 +105,67 @@ func (s *UserServiceLayer) CreateUser(ctx context.Context, req *domain.CreateUse
 	s.cacheUser(ctx, user)
 
 	log.Printf("✅ User created successfully: ID=%s", user.ID)
+	return user, nil
+}
+
+// CreateUserSystem - создание самого первого пользователя в организации с ролью OWNER
+// Не требует авторизации. Вызывается только при создании и инициализации организации
+func (s UserServiceLayer) CreateUserSystem(ctx context.Context, req *domain.CreateUserRequest, ownerPass string) (*domain.User, error) {
+	// 1. Валидация входных данных
+	if req == nil {
+		return nil, domain.ErrInvalidRequest
+	}
+	if req.Email == "" {
+		return nil, domain.ErrInvalidReqEmail
+	}
+	if req.FullName == "" {
+		return nil, domain.ErrReqFullNameRequired
+	}
+	if ownerPass == "" {
+		return nil, domain.ErrReqPasswordRequired
+	}
+	if req.OrganizationID == "" {
+		return nil, domain.ErrReqOrganizationIDRequired
+	}
+	if len(ownerPass) < 6 {
+		return nil, domain.ErrReqPasswordTooShort
+	}
+
+	// 2. Проверка, что пользователь с таким email не существует
+	existingUser, err := s.UserRepo.GetByEmail(ctx, req.Email)
+	if err != nil && !errors.Is(err, domain.ErrUserNotFound) {
+		return nil, fmt.Errorf("check existing user failed: %w", err)
+	}
+	if existingUser != nil {
+		return nil, domain.ErrUserAlreadyExists
+	}
+
+	// 3. Хэширование пароля
+	// специально cost = bcrypt.DefaultCost (это 10, так как это пэт-проект)
+	// в перспективе можно вынести это значение в конфиг и повышать (при необходимости)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(ownerPass), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	// 4. Создаём доменную модель пользователя (роль принудительно OWNER)
+	user := domain.NewUser(req.Email, req.FullName, domain.RoleOwner, req.OrganizationID)
+	user.PasswordHash = string(hashedPassword)
+	user.Status = domain.UserStatusActive
+
+	// 5. Дополнительная валидация доменной модели
+	if err := user.Validate(); err != nil {
+		return nil, err
+	}
+
+	// 6. Сохраняем в БД через репозиторий
+	if err := s.UserRepo.Create(ctx, user); err != nil {
+		return nil, fmt.Errorf("failed to create user: %w", err)
+	}
+
+	// 7. Логируем создание (опционально)
+	log.Printf("✅ System user created: id=%s, email=%s, org_id=%s, role=OWNER", user.ID, user.Email, user.OrganizationID)
+
 	return user, nil
 }
 
