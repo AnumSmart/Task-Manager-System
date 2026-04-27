@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"user-service/internal/domain"
 )
@@ -96,6 +98,92 @@ func (db *UserServiceDBRepository) DeleteOrg(ctx context.Context, orgID string) 
 	// Коммитим транзакцию
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+// GetOrganizationByID - получаем организацию из БД
+func (db *UserServiceDBRepository) GetOrganizationByID(ctx context.Context, orgID string) (*domain.Organization, error) {
+	query := `
+		SELECT id, name, owner_id, is_active, created_at, updated_at, deleted_at
+		FROM organizations
+		WHERE id = $1 AND deleted_at IS NULL
+	`
+
+	var org domain.Organization
+	var deletedAt sql.NullTime
+
+	err := db.Pool.QueryRow(ctx, query, orgID).Scan(
+		&org.ID,
+		&org.Name,
+		&org.OwnerID,
+		&org.IsActive,
+		&org.CreatedAt,
+		&org.UpdatedAt,
+		&deletedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrOrganizationNotFound
+		}
+		return nil, fmt.Errorf("failed to get organization by id: %w", err)
+	}
+
+	// Конвертируем sql.NullTime в *time.Time
+	if deletedAt.Valid {
+		org.DeletedAt = &deletedAt.Time
+	}
+
+	return &org, nil
+}
+
+// UpdateOwner - обновляет владельца организации
+func (db *UserServiceDBRepository) UpdateOwner(ctx context.Context, orgID, ownerID string) error {
+	// 1. Валидация параметров
+	if orgID == "" {
+		return fmt.Errorf("organization id is required")
+	}
+	if ownerID == "" {
+		return fmt.Errorf("owner id is required")
+	}
+
+	// 2. SQL запрос на обновление
+	query := `
+		UPDATE organizations 
+		SET owner_id = $1, updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL
+	`
+
+	// 3. Выполняем запрос
+	result, err := db.Pool.Exec(ctx, query, ownerID, orgID)
+	if err != nil {
+		return fmt.Errorf("failed to update organization owner: %w", err)
+	}
+
+	if result == 0 {
+		// Организация не найдена или уже удалена (soft delete)
+		return domain.ErrOrganizationNotFound
+	}
+
+	return nil
+}
+
+// Activate - устанавливает is_active = true
+func (db *UserServiceDBRepository) Activate(ctx context.Context, orgID string) error {
+	query := `
+        UPDATE organizations 
+        SET is_active = true, updated_at = NOW()
+        WHERE id = $1 AND deleted_at IS NULL
+    `
+
+	result, err := db.Pool.Exec(ctx, query, orgID)
+	if err != nil {
+		return fmt.Errorf("failed to activate organization: %w", err)
+	}
+
+	if result == 0 {
+		return domain.ErrOrganizationNotFound
 	}
 
 	return nil
