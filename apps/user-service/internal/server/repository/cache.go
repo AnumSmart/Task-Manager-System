@@ -85,3 +85,28 @@ func (r *UserServiceCacheRepository) Delete(ctx context.Context, key string) err
 
 	return nil
 }
+
+// PingCache - health check запрос к кэшу
+func (r *UserServiceCacheRepository) PingCache(ctx context.Context) error {
+	key := "health_check" + r.prefix
+
+	// Проверка отмены контекста
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	if err := r.cache.Set(ctx, key, []byte("ok"), 1); err != nil {
+		return fmt.Errorf("redis cache health check failed: %w", err)
+	}
+
+	// Проверка отмены контекста перед Delete
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	return r.cache.Delete(ctx, key)
+}

@@ -7,6 +7,7 @@ import (
 	"log"
 	"user-service/internal/converter"
 	"user-service/internal/domain"
+	"user-service/internal/server/interceptors"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -15,27 +16,38 @@ import (
 // CreateUser - создание нового пользователя в организации
 // Только пользователи с ролью OWNER или MANAGER могут создавать новых пользователей
 func (s *UserServerHandler) CreateUser(ctx context.Context, req *pb.CreateUserRequest) (*pb.CreateUserResponse, error) {
+	// 1. Проверка контекста
 	select {
 	case <-ctx.Done():
-		log.Printf("❌ Контекст отменён: %v", ctx.Err())
 		return nil, ctx.Err()
 	default:
 	}
-	// Просто получаем userID из контекста (уже добавлен интерсептором)
-	/*
-		createdBy, ok := grpc.GetUserID(ctx)
-		if !ok {
-			return nil, status.Error(codes.Unauthenticated, "user not authenticated")
-		}
-	*/
-	createdBy := "owner" // работу с авторизацией нужно будет допилить!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-	// получаем доменную стркутуру пользователя через конвертер (grpc ---> doamin)
+	// 2. Извлечение данных из контекста (через интерсептор)
+	createdBy, ok := ctx.Value(interceptors.ContextKeyUserID).(string)
+	if !ok || createdBy == "" {
+		return nil, status.Error(codes.Unauthenticated, "user not authenticated")
+	}
 
-	userToCreate := converter.ToDomainUserFromCreateRequest(req)
-	// проверка, то что не удалось сконвертировать пользователя
+	organizationID, ok := ctx.Value(interceptors.ContextKeyOrganizationID).(string)
+	if !ok || organizationID == "" {
+		return nil, status.Error(codes.Unauthenticated, "organization not found")
+	}
+
+	role, ok := ctx.Value(interceptors.ContextKeyRole).(string)
+	if !ok {
+		return nil, status.Error(codes.Unauthenticated, "role not found")
+	}
+
+	// 3. Проверка прав на хэндлер-уровне
+	if role != "OWNER" && role != "MANAGER" {
+		return nil, status.Error(codes.PermissionDenied, "only OWNER or MANAGER can create users")
+	}
+
+	// 4. Конвертация с передачей organizationID
+	userToCreate := converter.ToDomainUserFromCreateRequest(req, organizationID)
 	if userToCreate == nil {
-		return nil, status.Error(codes.InvalidArgument, "некорректные данные пользователя")
+		return nil, status.Error(codes.InvalidArgument, "invalid user data")
 	}
 
 	// создаём доменный запрос

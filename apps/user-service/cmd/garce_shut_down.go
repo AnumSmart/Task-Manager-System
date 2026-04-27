@@ -27,6 +27,9 @@ func waitForShutdown(grpcServer *server.GRPCUserServer, serverErrors <-chan erro
 	case sig := <-sigChan:
 		log.Printf("📡 Received signal: %s", sig)
 
+		//устанавливаем в слое хэндлера флаг, о том, что начался Graceful ShutDown
+		_ = grpcServer.Handler.IsShuttingDown()
+
 		// Для SIGQUIT делаем принудительное завершение без graceful
 		if sig == syscall.SIGQUIT {
 			log.Println("⚠️  SIGQUIT received, forcing immediate shutdown")

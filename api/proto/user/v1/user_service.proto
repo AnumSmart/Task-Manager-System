@@ -258,6 +258,7 @@ message LinkTelegramResponse {
     string jwt_token = 5; // 🔥 JWT токен для последующей авторизации
     int64 expires_in = 6; // Время жизни токена в секундах
     common.v1.JWTClaims claims = 7; // Claims токена (опционально, для информации)
+    string refresh_token = 8;        // Refresh token для долгосрочного хранения
 }
 
 message GetMyProfileRequest {

@@ -83,3 +83,82 @@ func (o *OrganizationLayer) DeleteOrganization(ctx context.Context, orgID string
 	log.Printf("✅ Organization deleted successfully: orgID=%s", orgID)
 	return nil
 }
+
+// Обновляет владельца организации
+func (o *OrganizationLayer) UpdateOwner(ctx context.Context, orgID, ownerID string) error {
+	// 1. Валидация
+	if orgID == "" {
+		return domain.ErrInvalidOrganizationID
+	}
+	if ownerID == "" {
+		return domain.ErrInvalidUserID
+	}
+
+	// 2. Проверяем, существует ли организация
+	org, err := o.OrgRepo.GetOrganizationByID(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	if org == nil {
+		return domain.ErrOrganizationNotFound
+	}
+	// 3. Проверяем, что пользователь принадлежит этой организации
+	if ownerID != org.ID {
+		return domain.ErrUserNotBelongToOrganization
+	}
+
+	// 5. Обновляем OwnerID в репозитории
+	err = o.OrgRepo.UpdateOwner(ctx, orgID, ownerID)
+	if err != nil {
+		return err
+	}
+
+	// 6. Логируем (опционально)
+	log.Printf("✅ Organization owner updated: org_id=%s, owner_id=%s", orgID, ownerID)
+
+	return nil
+}
+
+// ActivateOrganization - активирует организацию
+func (o *OrganizationLayer) ActivateOrganization(ctx context.Context, orgID string, owner *domain.User) error {
+	// 1. Валидация
+	if orgID == "" {
+		return domain.ErrInvalidOrganizationID
+	}
+	if owner.ID == "" {
+		return domain.ErrInvalidUserID
+	}
+
+	// 2. Получаем организацию
+	org, err := o.OrgRepo.GetOrganizationByID(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	if org == nil {
+		return domain.ErrOrganizationNotFound
+	}
+
+	// 3. Проверяем, что владелец организации установлен
+	if org.OwnerID == "" {
+		return domain.ErrOrganizationNoOwner
+	}
+
+	// 4. Проверяем, что владелец совпадает с переданным ownerID
+	if org.OwnerID != owner.ID {
+		return domain.ErrNotOrganizationOwner
+	}
+
+	// 5. Проверяем, что владелец имеет роль OWNER
+	if owner.Role != domain.RoleOwner {
+		return domain.ErrUserIsNotOwner
+	}
+
+	// 6. Активируем организацию
+	err = o.OrgRepo.Activate(ctx, orgID)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("✅ Organization activated: org_id=%s, owner_id=%s", orgID, owner.ID)
+	return nil
+}

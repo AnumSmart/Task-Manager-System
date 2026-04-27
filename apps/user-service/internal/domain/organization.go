@@ -14,6 +14,7 @@ type Organization struct {
 	OwnerID   string
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	DeletedAt *time.Time
 }
 
 // Конструктор для создания новой организации

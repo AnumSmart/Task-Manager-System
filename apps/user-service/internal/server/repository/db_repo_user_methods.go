@@ -368,3 +368,12 @@ func (db *UserServiceDBRepository) Count(ctx context.Context) (int, error) {
 
 	return num, nil
 }
+
+// метод для HealthCheck
+func (db *UserServiceDBRepository) PingDB(ctx context.Context) error {
+	// Проверка PostgreSQL
+	if _, err := db.Pool.Exec(ctx, "SELECT 1"); err != nil {
+		return fmt.Errorf("postgres health check failed: %w", err)
+	}
+	return nil
+}
