@@ -4,6 +4,7 @@ import (
 	pb "api/gen/go/user/v1"
 	"context"
 	"log"
+	"user-service/internal/converter"
 )
 
 // LinkTelegram - привязка Telegram аккаунта к существующему пользователю
@@ -18,7 +19,53 @@ func (s *UserServerHandler) LinkTelegram(ctx context.Context, req *pb.LinkTelegr
 
 	log.Printf("📝 LinkTelegram вызван: telegram_id=%d, email=%s", req.GetTelegramId(), req.GetEmail())
 
-	return &pb.LinkTelegramResponse{}, nil
+	// Валидация email
+	if req.GetEmail() == "" {
+		return &pb.LinkTelegramResponse{
+			Success:      false,
+			ErrorMessage: "email не может быть пустым",
+		}, nil
+	}
+
+	// Валидация telegram_id
+	if req.GetTelegramId() == 0 {
+		return &pb.LinkTelegramResponse{
+			Success:      false,
+			ErrorMessage: "telegram_id не может быть 0",
+		}, nil
+	}
+
+	// Обработка optional поля telegram_username
+	telegramUsername := ""
+	if req.TelegramUsername != nil {
+		telegramUsername = *req.TelegramUsername
+	}
+
+	// Вызов сервисного слоя
+	user, accessToken, refreshToken, expiresIn, err := s.UserServerService.Telegram.LinkTelegramServ(
+		ctx,
+		req.GetEmail(),
+		req.GetTelegramId(),
+		telegramUsername,
+	)
+
+	if err != nil {
+		log.Printf("❌ LinkTelegram ошибка: %v", err)
+		return &pb.LinkTelegramResponse{
+			Success:      false,
+			ErrorMessage: err.Error(),
+		}, nil
+	}
+
+	// Формируем успешный ответ
+	return &pb.LinkTelegramResponse{
+		Success:      true,
+		Message:      "Telegram успешно привязан",
+		User:         converter.ToProtoUser(user),
+		JwtToken:     accessToken,
+		RefreshToken: refreshToken,
+		ExpiresIn:    expiresIn,
+	}, nil
 }
 
 // GetUserByTelegram - поиск пользователя по Telegram ID
