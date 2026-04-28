@@ -4,60 +4,39 @@ import "errors"
 
 // JWT-specific errors
 var (
-	// ErrInvalidToken - токен недействителен
-	ErrInvalidToken = errors.New("invalid token")
+	// Базовые ошибки токенов
+	ErrInvalidToken     = errors.New("invalid token")
+	ErrExpiredToken     = errors.New("token has expired")
+	ErrMalformedToken   = errors.New("malformed token")
+	ErrInvalidSignature = errors.New("invalid token signature")
+	ErrTokenNotValidYet = errors.New("token is not valid yet")
+	ErrTokenRevoked     = errors.New("token has been revoked")
 
-	// ErrExpiredToken - токен истек
-	ErrExpiredToken = errors.New("token has expired")
+	// Ошибки refresh токенов
+	ErrNotRefreshToken      = errors.New("token is not a refresh token")
+	ErrInvalidRefreshToken  = errors.New("invalid refresh token")
+	ErrRefreshTokenExpired  = errors.New("refresh token has expired")
+	ErrRefreshTokenNotFound = errors.New("refresh token not found")
+	ErrRefreshTokenMismatch = errors.New("refresh token does not match user")
 
-	// ErrMissingToken - токен отсутствует
-	ErrMissingToken = errors.New("missing token")
-
-	// ErrEmptyToken - пустой токен
-	ErrEmptyToken = errors.New("empty token")
-
-	// ErrInvalidAuthHeader - неверный формат заголовка авторизации
+	// Ошибки присутствия токена
+	ErrMissingToken      = errors.New("missing token")
+	ErrEmptyToken        = errors.New("empty token")
 	ErrInvalidAuthHeader = errors.New("invalid authorization header format, expected 'Bearer <token>'")
 
-	// ErrMissingUserID - отсутствует user_id в claims
-	ErrMissingUserID = errors.New("user_id is missing in token claims")
-
-	// ErrMissingRole - отсутствует role в claims
-	ErrMissingRole = errors.New("role is missing in token claims")
-
-	// ErrMissingOrganizationID - отсутствует organization_id в claims
+	// Ошибки claims
+	ErrMissingUserID         = errors.New("user_id is missing in token claims")
+	ErrMissingRole           = errors.New("role is missing in token claims")
 	ErrMissingOrganizationID = errors.New("organization_id is missing in token claims")
 
-	// ErrNotRefreshToken - токен не является refresh токеном
-	ErrNotRefreshToken = errors.New("token is not a refresh token")
-
-	// ErrInvalidConfig - неверная конфигурация
-	ErrInvalidConfig = errors.New("invalid jwt config")
-
-	// ErrEmptySecretKey - пустой секретный ключ
-	ErrEmptySecretKey = errors.New("jwt secret key is empty")
-
-	// ErrWeakSecretKey - слабый секретный ключ
-	ErrWeakSecretKey = errors.New("jwt secret key must be at least 32 characters")
-
-	// ErrInvalidAccessTTL - неверный TTL для access токена
-	ErrInvalidAccessTTL = errors.New("access token TTL must be positive")
-
-	// ErrInvalidRefreshTTL - неверный TTL для refresh токена
+	// Ошибки конфигурации
+	ErrInvalidConfig     = errors.New("invalid jwt config")
+	ErrEmptySecretKey    = errors.New("jwt secret key is empty")
+	ErrWeakSecretKey     = errors.New("jwt secret key must be at least 32 characters")
+	ErrInvalidAccessTTL  = errors.New("access token TTL must be positive")
 	ErrInvalidRefreshTTL = errors.New("refresh token TTL must be positive")
 
-	// ErrMalformedToken - токен имеет неправильный формат (не 3 части, невалидный base64 и т.д.)
-	ErrMalformedToken = errors.New("malformed token")
-
-	// ErrInvalidSignature - подпись токена недействительна
-	ErrInvalidSignature = errors.New("invalid token signature")
-
-	// ErrTokenNotValidYet - токен еще не активен (проверка nbf claim)
-	ErrTokenNotValidYet = errors.New("token is not valid yet")
-
-	// ErrUnexpectedSigningMethod - неожиданный метод подписи (например, ожидали HMAC, а получили RSA)
+	// Ошибки парсинга
 	ErrUnexpectedSigningMethod = errors.New("unexpected signing method")
-
-	// ErrParseToken - общая ошибка парсинга токена (когда не можем классифицировать)
-	ErrParseToken = errors.New("failed to parse token")
+	ErrParseToken              = errors.New("failed to parse token")
 )

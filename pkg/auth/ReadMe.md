@@ -11,7 +11,7 @@ pkg/auth/
 │   └── manager.go             # JWT Manager (только JWT логика)
 ├── blacklist/
 │   └── blacklist.go           # Интерфейс и логика blacklist (без создания клиента)
-└── middleware/
-    └── grpc.go                # gRPC middleware
+└── refresh/
+    └── storage.go             # Хранилище для refresh jwt ключей (сущность)
 
 ```

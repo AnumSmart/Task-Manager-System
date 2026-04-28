@@ -17,7 +17,6 @@ type CustomClaims struct {
 	UserID         string `json:"user_id"`
 	Role           string `json:"role"`
 	OrganizationID string `json:"organization_id"`
-	Email          string `json:"email"`
 	jwt.RegisteredClaims
 }
 
@@ -25,7 +24,7 @@ type CustomClaims struct {
 type TokenPair struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
-	ExpiresIn    int64  `json:"expires_in"` // seconds
+	ExpiresAt    int64  `json:"expires_at"` // seconds
 }
 
 // Validate проверяет обязательные поля в claims
