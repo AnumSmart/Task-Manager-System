@@ -47,7 +47,7 @@ func (m *Manager) GenerateTokenPair(userID, role, organizationID string) (*Token
 	return &TokenPair{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
-		ExpiresIn:    int64(m.config.AccessTokenTTL.Seconds()),
+		ExpiresAt:    int64(m.config.AccessTokenTTL.Seconds()),
 	}, nil
 }
 

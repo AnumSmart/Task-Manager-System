@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"pkg/auth/blacklist"
 	"pkg/auth/jwt"
+	"pkg/auth/refresh"
 	"pkg/configs"
 
 	"global_models/global_cache"
@@ -22,7 +23,8 @@ type Provider struct {
 	providerCfg ProviderConfig
 
 	jwtManager *jwt.Manager
-	blacklist  *blacklist.RedisBlacklist
+	blacklist  BlacklistInterface
+	storage    RefreshTokenStorageInterface
 	auth       *Auth
 }
 
@@ -64,8 +66,13 @@ func (p *Provider) Build() (*Auth, error) {
 		p.blacklist = blacklistService
 	}
 
-	// 3. Создаем Auth сервис
-	p.auth = New(jwtManager, blacklistService, p.providerCfg.EnableBlacklist)
+	// 3. Создаем Refresh key Storage на базе того же редис
+	var storage *refresh.RefreshTokenStorage
+	storage = refresh.NewRefreshTokenStorage(p.cache)
+	p.storage = storage
+
+	// 4. Создаем Auth сервис
+	p.auth = New(jwtManager, blacklistService, storage, p.providerCfg.EnableBlacklist)
 
 	return p.auth, nil
 }

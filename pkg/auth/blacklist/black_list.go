@@ -2,6 +2,7 @@ package blacklist
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"time"
 
@@ -23,16 +24,21 @@ func NewRedisBlacklist(cache global_cache.Cache) *RedisBlacklist {
 // RevokeToken добавляет токен в черный список
 func (b *RedisBlacklist) RevokeToken(ctx context.Context, token string, ttl time.Duration) error {
 	if ttl <= 0 {
-		ttl = 24 * time.Hour
+		return fmt.Errorf("token TTL must be positive: %v", ttl)
 	}
 
-	key := b.getKey(token)
+	// ✅ Хешируем токен для безопасности
+	tokenHash := sha256.Sum256([]byte(token))
+	key := b.getKey(tokenHash[:])
+
 	return b.cache.Set(ctx, key, []byte("revoked"), ttl)
 }
 
 // IsRevoked проверяет, отозван ли токен
 func (b *RedisBlacklist) IsRevoked(ctx context.Context, token string) (bool, error) {
-	key := b.getKey(token)
+	tokenHash := sha256.Sum256([]byte(token))
+	key := b.getKey(tokenHash[:])
+
 	return b.cache.Exists(ctx, key)
 }
 
@@ -46,7 +52,7 @@ func (b *RedisBlacklist) HealthCheck(ctx context.Context) error {
 	return b.cache.Delete(ctx, testKey)
 }
 
-// getKey формирует ключ для токена в Redis
-func (b *RedisBlacklist) getKey(token string) string {
-	return fmt.Sprintf("jwt:blacklist:%s", token)
+// getKey формирует ключ для хеша токена в Redis
+func (b *RedisBlacklist) getKey(tokenHash []byte) string {
+	return fmt.Sprintf("jwt:blacklist:%x", tokenHash)
 }

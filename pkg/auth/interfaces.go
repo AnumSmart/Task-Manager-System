@@ -3,12 +3,13 @@ package auth
 import (
 	"context"
 	"pkg/auth/jwt"
+	"time"
 )
 
-// AuthInterface определяет контракт для сервиса авторизации
+// AuthInterface определяет контракт для сервиса авторизации (User Service)
 type AuthInterface interface {
 	// Генерация токенов
-	GenerateTokenPair(userID, role, organizationID string) (*jwt.TokenPair, error)
+	GenerateTokenPair(ctx context.Context, userID, role, organizationID string) (*jwt.TokenPair, error)
 
 	// Валидация токенов
 	ValidateToken(ctx context.Context, tokenString string) (*jwt.CustomClaims, error)
@@ -16,27 +17,48 @@ type AuthInterface interface {
 	// Отзыв токенов
 	RevokeToken(ctx context.Context, tokenString string) error
 
-	// RefreshAccessToken создает новый access token из refresh token
-	RefreshAccessToken(refreshTokenString string) (*jwt.TokenPair, error)
+	// логаут, удаление refresh токена
+	Logout(ctx context.Context, userID string, refreshToken string) error
 
-	// API Key валидация
-	ValidateServiceAPIKey(serviceName, apiKey string) bool
+	// RefreshAccessToken создает новый access token из refresh token
+	RefreshAccessToken(ctx context.Context, userID string, refreshTokenString string) (*jwt.TokenPair, error)
 
 	// Вспомогательные методы
 	ExtractTokenFromBearer(authHeader string) (string, error)
 
-	// HealthCheck
+	// HeathCheck
 	HealthCheck(ctx context.Context) error
 }
 
-// TokenValidatorInterface для сервисов которым нужна только валидация
+// TokenValidatorInterface для сервисов которым нужна ТОЛЬКО валидация
+// (Task Service, Analytics Service, Notification Service)
 type TokenValidatorInterface interface {
 	ValidateToken(ctx context.Context, tokenString string) (*jwt.CustomClaims, error)
 	ExtractTokenFromBearer(authHeader string) (string, error)
+	IsTokenRevoked(ctx context.Context, tokenString string) (bool, error) // ← добавить
 }
 
-// TokenGeneratorInterface для сервисов которым нужна генерация
+// TokenGeneratorInterface для сервисов которым нужна генерация (только User Service)
 type TokenGeneratorInterface interface {
-	GenerateTokenPair(userID, role, organizationID string) (*jwt.TokenPair, error)
-	RefreshAccessToken(refreshTokenString string) (*jwt.TokenPair, error)
+	GenerateTokenPair(ctx context.Context, userID, role, organizationID string) (*jwt.TokenPair, error)
+	RefreshAccessToken(ctx context.Context, userID string, refreshTokenString string) (*jwt.TokenPair, error)
+}
+
+// APIKeyValidator для сервис-ту-сервис аутентификации
+type APIKeyValidator interface {
+	ValidateServiceAPIKey(ctx context.Context, serviceName, apiKey string) bool
+}
+
+// BlacklistInterface для управления черным списком
+type BlacklistInterface interface {
+	RevokeToken(ctx context.Context, token string, ttl time.Duration) error // добавляет токен в черный список
+	IsRevoked(ctx context.Context, token string) (bool, error)              // проверяет, что токен в черном списке
+	HealthCheck(ctx context.Context) error                                  // health check
+}
+
+// RefreshTokenStorageInterface для управления refresh токенами
+type RefreshTokenStorageInterface interface {
+	Store(ctx context.Context, userID string, refreshToken string, ttl time.Duration) error  // сохраняем refresh токен в хранилище
+	ValidateInStorage(ctx context.Context, userID string, refreshToken string) (bool, error) // проверяем наличие refresh токена в хранилище
+	Revoke(ctx context.Context, userID string, refreshToken string) error                    // удаляем refresh токен из хранилища
 }
