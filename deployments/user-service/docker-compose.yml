@@ -19,7 +19,8 @@ services:
       timeout: 5s
       retries: 5
 
-  # Redis cache сервер
+  # Redis cache сервер (# ❌ Не сохраняем на диск, # ❌ Отключаем RDB снимки)
+  # При перезапуске данные теряются - это НОРМАЛЬНО
   redis_cache:
     container_name: redis_cache_go
     image: redis:7-alpine
@@ -31,6 +32,8 @@ services:
       --tcp-keepalive 300
       --maxmemory 256mb
       --maxmemory-policy allkeys-lru
+      --appendonly no
+      --save ""
     ports:
       - '6379:6379' # Для локальных серверов
     volumes:
@@ -53,7 +56,8 @@ services:
     networks:
       - app-network
 
-  # Redis blacklist сервер
+  # Redis blacklist сервер (# ✅ Включаем AOF, # Сохраняем каждую секунду, # ✅ Резервный RDB снимок)
+  # При перезапуске данные должны восстановиться - это ОБЯЗАТЕЛЬНО
   redis_blacklist:
     container_name: redis_blacklist_go
     image: redis:7-alpine
@@ -64,7 +68,11 @@ services:
       --timeout 0
       --tcp-keepalive 300
       --maxmemory 256mb
-      --maxmemory-policy allkeys-lru
+      --maxmemory-policy noeviction
+      --appendonly yes
+      --appendfsync everysec
+      --save "900 1"
+      --save "300 10"
     ports:
       - '6380:6380' # Для локальных серверов
     volumes:
