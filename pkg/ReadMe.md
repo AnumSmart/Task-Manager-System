@@ -7,13 +7,13 @@ pkg/
 │     |    └── redis.go
 |     ├── config/
 │     |    ├── config.go
-│     |    └── helper.go              # вспомогательные функции
+│     |    └── helper.go             # вспомогательные функции
 |     ├── jwt/
-│     |    ├── claims.go              # Только структуры claims
-│     |    ├── errors.go              # JWT ошибки
-│     |    └── manager.go             # JWT Manager (принимает конфиг)
-|     ├── middleware/
-|     |    └── grpc.go                # gRPC middleware (использует auth сервис)
+│     |    ├── claims.go             # Только структуры claims
+│     |    ├── errors.go             # JWT ошибки
+│     |    └── manager.go            # JWT Manager (принимает конфиг)
+|     ├── refresh/
+|     |    └── storage.go            # Хранилище для refresh jwt ключей (сущность)
 |     ├── interfaces.go
 |     ├── auth.go
 |     └── provider.go                # DI провайдер
