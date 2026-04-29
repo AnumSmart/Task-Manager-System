@@ -30,36 +30,39 @@ func NewManager(cfg *configs.JWTConfig) (*Manager, error) {
 	}, nil
 }
 
-// GenerateTokenPair создает пару access и refresh токенов
-func (m *Manager) GenerateTokenPair(userID, role, organizationID string) (*TokenPair, error) {
+// GenerateTokenPair создает пару access и refresh токенов и sessionID, одинаковый для обоих токенов
+func (m *Manager) GenerateTokenPair(userID, role, organizationID string) (*TokenPair, string, error) {
+	// Генерируем ОДИН sessionID для всей пары токенов
+	sessionID := uuid.New().String() // ← общий идентификатор сессии
+
 	// Генерируем access token
-	accessToken, err := m.generateToken(userID, role, organizationID, m.config.AccessTokenTTL, AccessToken)
+	accessToken, err := m.generateToken(userID, role, organizationID, m.config.AccessTokenTTL, AccessToken, sessionID)
 	if err != nil {
-		return nil, fmt.Errorf("generate access token: %w", err)
+		return nil, "", fmt.Errorf("generate access token: %w", err)
 	}
 
 	// Генерируем refresh token
-	refreshToken, err := m.generateToken(userID, role, organizationID, m.config.RefreshTokenTTL, RefreshToken)
+	refreshToken, err := m.generateToken(userID, role, organizationID, m.config.RefreshTokenTTL, RefreshToken, sessionID)
 	if err != nil {
-		return nil, fmt.Errorf("generate refresh token: %w", err)
+		return nil, "", fmt.Errorf("generate refresh token: %w", err)
 	}
 
 	return &TokenPair{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		ExpiresAt:    int64(m.config.AccessTokenTTL.Seconds()),
-	}, nil
+	}, sessionID, nil
 }
 
 // generateToken создает один JWT токен
-func (m *Manager) generateToken(userID, role, organizationID string, ttl time.Duration, tokenType TokenType) (string, error) {
+func (m *Manager) generateToken(userID, role, organizationID string, ttl time.Duration, tokenType TokenType, sessionID string) (string, error) {
 	now := time.Now()
 	claims := &CustomClaims{
 		UserID:         userID,
 		Role:           role,
 		OrganizationID: organizationID,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ID:        uuid.New().String(),
+			ID:        sessionID, // ← используем переданный sessionID, НЕ новый uuid
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
 			NotBefore: jwt.NewNumericDate(now),
@@ -120,17 +123,23 @@ func (m *Manager) ValidateToken(tokenString string) (*CustomClaims, error) {
 }
 
 // RefreshAccessToken создает новый access token из refresh token
-func (m *Manager) RefreshAccessToken(refreshTokenString string) (*TokenPair, error) {
+func (m *Manager) RefreshAccessToken(refreshTokenString string) (*TokenPair, string, error) {
 	claims, err := m.ValidateToken(refreshTokenString)
 	if err != nil {
-		return nil, fmt.Errorf("validate refresh token: %w", err)
+		return nil, "", fmt.Errorf("validate refresh token: %w", err)
 	}
 
 	if !claims.IsRefreshToken() {
-		return nil, ErrNotRefreshToken
+		return nil, "", ErrNotRefreshToken
 	}
 
-	return m.GenerateTokenPair(claims.UserID, claims.Role, claims.OrganizationID)
+	// генерируем новую пару токенов с новым SessionID
+	tokenPair, sessionID, err := m.GenerateTokenPair(claims.UserID, claims.Role, claims.OrganizationID)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return tokenPair, sessionID, nil
 }
 
 // ExtractTokenFromBearer извлекает токен из строки "Bearer <token>"

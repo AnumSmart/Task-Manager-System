@@ -9,16 +9,16 @@ import (
 // AuthInterface определяет контракт для сервиса авторизации (User Service)
 type AuthInterface interface {
 	// Генерация токенов
-	GenerateTokenPair(ctx context.Context, userID, role, organizationID string) (*jwt.TokenPair, error)
+	GenerateTokenPair(ctx context.Context, userID, role, organizationID string) (*jwt.TokenPair, string, error)
 
 	// Валидация токенов
 	ValidateToken(ctx context.Context, tokenString string) (*jwt.CustomClaims, error)
 
-	// Отзыв токенов
+	// Поместиить токен в черный список
 	RevokeToken(ctx context.Context, tokenString string) error
 
 	// логаут, удаление refresh токена
-	Logout(ctx context.Context, userID string, refreshToken string) error
+	Logout(ctx context.Context, sessionID string) error
 
 	// RefreshAccessToken создает новый access token из refresh token
 	RefreshAccessToken(ctx context.Context, userID string, refreshTokenString string) (*jwt.TokenPair, error)
@@ -58,7 +58,8 @@ type BlacklistInterface interface {
 
 // RefreshTokenStorageInterface для управления refresh токенами
 type RefreshTokenStorageInterface interface {
-	Store(ctx context.Context, userID string, refreshToken string, ttl time.Duration) error  // сохраняем refresh токен в хранилище
-	ValidateInStorage(ctx context.Context, userID string, refreshToken string) (bool, error) // проверяем наличие refresh токена в хранилище
-	Revoke(ctx context.Context, userID string, refreshToken string) error                    // удаляем refresh токен из хранилища
+	Store(ctx context.Context, sessionID string, refreshToken string, ttl time.Duration) error  // сохраняем refresh токен в хранилище
+	ValidateInStorage(ctx context.Context, sessionID string, refreshToken string) (bool, error) // проверяем наличие refresh токена в хранилище
+	Revoke(ctx context.Context, sessionID string) error                                         // удаляем refresh токен из хранилища
+	Exists(ctx context.Context, sessionID string) (bool, error)                                 // Exists проверяет только существование сессии (без проверки токена)
 }

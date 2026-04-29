@@ -135,15 +135,3 @@ func (s *UserServerHandler) ListUsers(ctx context.Context, req *pb.ListUsersRequ
 
 	return &pb.ListUsersResponse{}, nil
 }
-
-// Logout - - выход из системы (отзыв JWT токена)
-func (s *UserServerHandler) Logout(ctx context.Context, req *pb.LogoutRequest) (*pb.LogoutResponse, error) {
-	select {
-	case <-ctx.Done():
-		log.Printf("❌ Контекст отменён: %v", ctx.Err())
-		return nil, ctx.Err()
-	default:
-	}
-
-	return &pb.LogoutResponse{}, nil
-}
