@@ -36,7 +36,7 @@ func (s *UserServerHandler) HealthCheck(ctx context.Context, req *pb.HealthCheck
 	ctxDB, cancelDB := context.WithTimeout(ctx, 2*time.Second)
 	defer cancelDB()
 
-	if err := s.UserServerService.HealthCheck.DB.PingDB(ctxDB); err != nil {
+	if err := s.UserServerService.HealthCheck.HealthCheckDB(ctxDB); err != nil {
 		allHealthy = false
 		details["database"] = fmt.Sprintf("error: %v", err)
 		log.Printf("⚠️ HealthCheck: DB не отвечает - %v", err)
@@ -49,7 +49,7 @@ func (s *UserServerHandler) HealthCheck(ctx context.Context, req *pb.HealthCheck
 	ctxCache, cancelCache := context.WithTimeout(ctx, 2*time.Second)
 	defer cancelCache()
 
-	if err := s.UserServerService.HealthCheck.Cache.PingCache(ctxCache); err != nil {
+	if err := s.UserServerService.HealthCheck.HealthCheckCache(ctxCache); err != nil {
 		allHealthy = false
 		details["redis_cache"] = fmt.Sprintf("error: %v", err)
 		log.Printf("⚠️ HealthCheck: Cache не отвечает - %v", err)
@@ -61,7 +61,7 @@ func (s *UserServerHandler) HealthCheck(ctx context.Context, req *pb.HealthCheck
 	ctxAuth, cancelAuth := context.WithTimeout(ctx, 2*time.Second)
 	defer cancelAuth()
 
-	if err := s.UserServerService.HealthCheck.AuthService.HealthCheck(ctxAuth); err != nil {
+	if err := s.UserServerService.HealthCheck.HealthCheckBlackList(ctxAuth); err != nil {
 		allHealthy = false
 		details["auth_blacklist"] = fmt.Sprintf("error: %v", err)
 		log.Printf("⚠️ HealthCheck: Auth Service (blacklist) не отвечает - %v", err)

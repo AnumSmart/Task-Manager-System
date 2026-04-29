@@ -42,7 +42,7 @@ func (s *UserServerHandler) LinkTelegram(ctx context.Context, req *pb.LinkTelegr
 	}
 
 	// Вызов сервисного слоя
-	user, accessToken, refreshToken, expiresIn, err := s.UserServerService.Telegram.LinkTelegramServ(
+	user, tokens, expiresIn, err := s.UserServerService.Telegram.LinkTelegramServ(
 		ctx,
 		req.GetEmail(),
 		req.GetTelegramId(),
@@ -62,8 +62,8 @@ func (s *UserServerHandler) LinkTelegram(ctx context.Context, req *pb.LinkTelegr
 		Success:      true,
 		Message:      "Telegram успешно привязан",
 		User:         converter.ToProtoUser(user),
-		JwtToken:     accessToken,
-		RefreshToken: refreshToken,
+		JwtToken:     tokens.AccessToken,
+		RefreshToken: tokens.RefreshToken,
 		ExpiresIn:    expiresIn,
 	}, nil
 }
@@ -110,4 +110,25 @@ func (s *UserServerHandler) UpdateMyProfile(ctx context.Context, req *pb.UpdateM
 	log.Printf("📝 UpdateMyProfile вызван: telegram_id=%s", req.GetRequestId())
 
 	return &pb.GetUserResponse{}, nil
+}
+
+// Logout - - выход из системы (отзыв JWT токена)
+func (s *UserServerHandler) Logout(ctx context.Context, req *pb.LogoutRequest) (*pb.LogoutResponse, error) {
+	select {
+	case <-ctx.Done():
+		log.Printf("❌ Контекст отменён: %v", ctx.Err())
+		return nil, ctx.Err()
+	default:
+	}
+
+	// 1. Извлекаем userID из контекста (из JWT)
+	sessionID := ctx.Value("sessionID").(string)
+
+	// 2. Вызываем сервис
+	err := s.UserServerService.Telegram.LogOut(ctx, sessionID)
+	if err != nil {
+		return &pb.LogoutResponse{Success: false, ErrorMessage: err.Error()}, nil
+	}
+
+	return &pb.LogoutResponse{Success: true}, nil
 }

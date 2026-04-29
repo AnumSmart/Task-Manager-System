@@ -33,6 +33,9 @@ const (
 	// ContextKeyEmail - ключ для email
 	ContextKeyEmail contextKey = "email"
 
+	// ContextSessionID - ключ для sessionID
+	ContextKeySessionID contextKey = "sessionID"
+
 	// ContextKeyClaims - ключ для всех claims
 	ContextKeyClaims contextKey = "claims"
 )
@@ -167,7 +170,7 @@ func addClaimsToContext(ctx context.Context, claims *jwt.CustomClaims) context.C
 	ctx = context.WithValue(ctx, ContextKeyUserID, claims.UserID)
 	ctx = context.WithValue(ctx, ContextKeyRole, claims.Role)
 	ctx = context.WithValue(ctx, ContextKeyOrganizationID, claims.OrganizationID)
-	ctx = context.WithValue(ctx, ContextKeyEmail, claims.Email)
+	ctx = context.WithValue(ctx, ContextKeySessionID, claims.RegisteredClaims.ID)
 	ctx = context.WithValue(ctx, ContextKeyClaims, claims)
 	return ctx
 }

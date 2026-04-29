@@ -41,7 +41,7 @@ func (t *TelegramLayer) LinkTelegramServ(ctx context.Context, email string, tele
 	if user.IsTelegramLinked() {
 		if user.GetTelegramID() == telegramID {
 			// Уже привязан к этому же Telegram — просто выдаём токены
-			tokenPair, err := t.Auth.GenerateTokenPair(ctx, user.ID, string(user.Role), user.OrganizationID)
+			tokenPair, _, err := t.Auth.GenerateTokenPair(ctx, user.ID, string(user.Role), user.OrganizationID)
 			if err != nil {
 				return nil, nil, 0, fmt.Errorf("не удалось сгенерировать JWT: %w", err)
 			}
@@ -59,7 +59,7 @@ func (t *TelegramLayer) LinkTelegramServ(ctx context.Context, email string, tele
 	}
 
 	// 6. Генерируем пару JWT токенов
-	tokenPair, err := t.Auth.GenerateTokenPair(ctx, user.ID, string(user.Role), user.OrganizationID)
+	tokenPair, _, err := t.Auth.GenerateTokenPair(ctx, user.ID, string(user.Role), user.OrganizationID)
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("не удалось сгенерировать JWT: %w", err)
 	}
@@ -67,8 +67,15 @@ func (t *TelegramLayer) LinkTelegramServ(ctx context.Context, email string, tele
 	return user, tokenPair, tokenPair.ExpiresAt, nil
 }
 
-// метод сервисного слоя Logout
-func (t *TelegramLayer) Logout(ctx context.Context, userID string, refreshToken string) error {
-	// ------------------в разаработке
+// метод сервисного слоя LogOut
+func (t *TelegramLayer) LogOut(ctx context.Context, sessionID string) error {
+	if sessionID == "" {
+		return fmt.Errorf("sessionID cannot be empty")
+	}
+
+	err := t.Auth.Logout(ctx, sessionID)
+	if err != nil {
+		return err
+	}
 	return nil
 }

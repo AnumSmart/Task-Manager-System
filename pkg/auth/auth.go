@@ -6,6 +6,7 @@ import (
 	"pkg/auth/blacklist"
 	"pkg/auth/jwt"
 	"pkg/auth/refresh"
+
 	"time"
 )
 
@@ -30,20 +31,20 @@ func New(jwtManager *jwt.Manager, blacklist *blacklist.RedisBlacklist, storage *
 }
 
 // GenerateTokenPair делегирует jwt менеджеру
-func (a *Auth) GenerateTokenPair(ctx context.Context, userID, role, organizationID string) (*jwt.TokenPair, error) {
+func (a *Auth) GenerateTokenPair(ctx context.Context, userID, role, organizationID string) (*jwt.TokenPair, string, error) {
 	// 1. Генерируем токены
-	tokens, err := a.jwt.GenerateTokenPair(userID, role, organizationID)
+	tokens, sessionID, err := a.jwt.GenerateTokenPair(userID, role, organizationID)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// 2. Сохраняем refresh token в хранилище (Redis Storage)
-	err = a.refreshStorage.Store(ctx, userID, tokens.RefreshToken, 7*24*time.Hour)
+	err = a.refreshStorage.Store(ctx, sessionID, tokens.RefreshToken, 7*24*time.Hour)
 	if err != nil {
-		return nil, fmt.Errorf("store refresh token: %w", err)
+		return nil, "", fmt.Errorf("store refresh token: %w", err)
 	}
 
-	return tokens, err
+	return tokens, sessionID, err
 }
 
 // ValidateToken проверяет токен (подпись + blacklist)
@@ -88,13 +89,13 @@ func (a *Auth) RevokeToken(ctx context.Context, tokenString string) error {
 }
 
 // Logout завершает сессию пользователя
-func (a *Auth) Logout(ctx context.Context, userID string, refreshToken string) error {
-	if userID == "" || refreshToken == "" {
-		return fmt.Errorf("userID and refreshToken cannot be empty")
+func (a *Auth) Logout(ctx context.Context, sessionID string) error {
+	if sessionID == "" {
+		return fmt.Errorf("sessionID cannot be empty")
 	}
 
 	// Удаляем refresh token из хранилища
-	if err := a.refreshStorage.Revoke(ctx, userID, refreshToken); err != nil {
+	if err := a.refreshStorage.Revoke(ctx, sessionID); err != nil {
 		return fmt.Errorf("revoke refresh token: %w", err)
 	}
 
@@ -103,13 +104,13 @@ func (a *Auth) Logout(ctx context.Context, userID string, refreshToken string) e
 }
 
 // RefreshAccessToken обновляет access токен
-func (a *Auth) RefreshAccessToken(ctx context.Context, userID string, refreshTokenString string) (*jwt.TokenPair, error) {
-	if userID == "" || refreshTokenString == "" {
+func (a *Auth) RefreshAccessToken(ctx context.Context, sessionID string, refreshTokenString string) (*jwt.TokenPair, error) {
+	if sessionID == "" || refreshTokenString == "" {
 		return nil, fmt.Errorf("userID and refreshToken cannot be empty")
 	}
 
 	// 1. Проверяем существование refresh token в storage
-	exists, err := a.refreshStorage.ValidateInStorage(ctx, userID, refreshTokenString)
+	exists, err := a.refreshStorage.ValidateInStorage(ctx, sessionID, refreshTokenString)
 	if err != nil {
 		return nil, fmt.Errorf("validate refresh token: %w", err)
 	}
@@ -118,16 +119,16 @@ func (a *Auth) RefreshAccessToken(ctx context.Context, userID string, refreshTok
 	}
 
 	// 2. Генерируем новую пару токенов
-	tokens, err := a.jwt.RefreshAccessToken(refreshTokenString)
+	tokens, sessionID, err := a.jwt.RefreshAccessToken(refreshTokenString)
 	if err != nil {
 		return nil, err
 	}
 
 	// 3. Ротация refresh токена (удаляем старый, сохраняем новый)
-	if err := a.refreshStorage.Revoke(ctx, userID, refreshTokenString); err != nil {
+	if err := a.refreshStorage.Revoke(ctx, sessionID); err != nil {
 		return nil, fmt.Errorf("revoke old refresh token: %w", err)
 	}
-	if err := a.refreshStorage.Store(ctx, userID, tokens.RefreshToken, 7*24*time.Hour); err != nil {
+	if err := a.refreshStorage.Store(ctx, sessionID, tokens.RefreshToken, 7*24*time.Hour); err != nil {
 		return nil, fmt.Errorf("store new refresh token: %w", err)
 	}
 
