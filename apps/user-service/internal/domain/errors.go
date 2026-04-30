@@ -15,6 +15,7 @@ var (
 	ErrInvalidInput                = errors.New("not equal organization")             // разные организации
 	ErrUserNotBelongToOrganization = errors.New("user do not belong to organization") // пользователь не принадлежит организации
 	ErrUserIsNotOwner              = errors.New("user is not OWNER")                  // пользователь не является владельцем организации
+	ErrInvalidRoleTransition       = errors.New("invalid role")                       //недопустимая роль для этой операции
 )
 
 // Доменные ошибки для организации

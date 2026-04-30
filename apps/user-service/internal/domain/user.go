@@ -47,6 +47,7 @@ const (
 	UserStatusActive    UserStatus = "ACTIVE"
 	UserStatusInactive  UserStatus = "INACTIVE"
 	UserStatusSuspended UserStatus = "SUSPENDED"
+	UserStatusDeleted   UserStatus = "DELETED"
 )
 
 // ==================== ОСНОВНАЯ ДОМЕННАЯ МОДЕЛЬ ====================
@@ -156,6 +157,10 @@ func (u *User) CanDeleteUser(targetUserID string, targetRole Role) bool {
 
 	// OWNER не может удалить самого себя
 	if u.ID == targetUserID {
+		return false
+	}
+	// Нельзя удалить другого OWNER (защита от удаления владельца)
+	if targetRole == RoleOwner {
 		return false
 	}
 
