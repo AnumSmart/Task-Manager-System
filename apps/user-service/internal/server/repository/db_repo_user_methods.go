@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -376,4 +377,130 @@ func (db *UserServiceDBRepository) PingDB(ctx context.Context) error {
 		return fmt.Errorf("postgres health check failed: %w", err)
 	}
 	return nil
+}
+
+// ListWithFilters - получение списка пользователей с фильтрацией и поиском
+func (db *UserServiceDBRepository) ListWithFilters(ctx context.Context, organizationID string, roleFilter *domain.Role, statusFilter *domain.UserStatus, searchQuery string, offset, limit int) ([]*domain.User, error) {
+	query := `
+		SELECT id, organization_id, email, full_name, role, status, 
+		       telegram_id, telegram_username, created_at, updated_at, last_login_at
+		FROM users
+		WHERE deleted_at IS NULL
+	`
+	args := []interface{}{}
+	argIndex := 1
+
+	// Фильтр по организации (обязательный)
+	if organizationID != "" {
+		query += fmt.Sprintf(" AND organization_id = $%d", argIndex)
+		args = append(args, organizationID)
+		argIndex++
+	}
+
+	// Фильтр по роли
+	if roleFilter != nil {
+		query += fmt.Sprintf(" AND role = $%d", argIndex)
+		args = append(args, string(*roleFilter))
+		argIndex++
+	}
+
+	// Фильтр по статусу
+	if statusFilter != nil {
+		query += fmt.Sprintf(" AND status = $%d", argIndex)
+		args = append(args, string(*statusFilter))
+		argIndex++
+	}
+
+	// Поиск по имени или email
+	if searchQuery != "" {
+		query += fmt.Sprintf(" AND (full_name ILIKE $%d OR email ILIKE $%d)", argIndex, argIndex+1)
+		searchPattern := "%" + searchQuery + "%"
+		args = append(args, searchPattern, searchPattern)
+		argIndex += 2
+	}
+
+	query += " ORDER BY created_at DESC LIMIT $%d OFFSET $%d"
+	args = append(args, limit, offset)
+
+	rows, err := db.Pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query users: %w", err)
+	}
+	defer rows.Close()
+
+	users := make([]*domain.User, 0)
+	for rows.Next() {
+		user := &domain.User{}
+		var telegramID sql.NullInt64
+		var telegramUsername sql.NullString
+		var lastLoginAt sql.NullTime
+
+		err := rows.Scan(
+			&user.ID, &user.OrganizationID, &user.Email, &user.FullName,
+			&user.Role, &user.Status, &telegramID, &telegramUsername,
+			&user.CreatedAt, &user.UpdatedAt, &lastLoginAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan user: %w", err)
+		}
+
+		if telegramID.Valid {
+			user.TelegramID = &telegramID.Int64
+		}
+		if telegramUsername.Valid {
+			user.TelegramUsername = &telegramUsername.String
+		}
+		if lastLoginAt.Valid {
+			user.LastLoginAt = &lastLoginAt.Time
+		}
+
+		users = append(users, user)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating users: %w", err)
+	}
+
+	return users, nil
+}
+
+// CountWithFilters - подсчёт пользователей с фильтрацией
+// CountWithFilters - подсчёт пользователей с фильтрацией и поиском
+func (db *UserServiceDBRepository) CountWithFilters(ctx context.Context, organizationID string, roleFilter *domain.Role, statusFilter *domain.UserStatus, searchQuery string) (int, error) {
+	query := `SELECT COUNT(*) FROM users WHERE deleted_at IS NULL`
+	args := []interface{}{}
+	argIndex := 1
+
+	if organizationID != "" {
+		query += fmt.Sprintf(" AND organization_id = $%d", argIndex)
+		args = append(args, organizationID)
+		argIndex++
+	}
+
+	if roleFilter != nil {
+		query += fmt.Sprintf(" AND role = $%d", argIndex)
+		args = append(args, string(*roleFilter))
+		argIndex++
+	}
+
+	if statusFilter != nil {
+		query += fmt.Sprintf(" AND status = $%d", argIndex)
+		args = append(args, string(*statusFilter))
+		argIndex++
+	}
+
+	if searchQuery != "" {
+		query += fmt.Sprintf(" AND (full_name ILIKE $%d OR email ILIKE $%d)", argIndex, argIndex+1)
+		searchPattern := "%" + searchQuery + "%"
+		args = append(args, searchPattern, searchPattern)
+		argIndex += 2
+	}
+
+	var count int
+	err := db.Pool.QueryRow(ctx, query, args...).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count users: %w", err)
+	}
+
+	return count, nil
 }

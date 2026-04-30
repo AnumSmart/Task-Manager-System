@@ -333,23 +333,49 @@ func (s *UserServiceLayer) DeleteUser(ctx context.Context, req *domain.DeleteUse
 }
 
 // ListUsers - получение списка пользователей с пагинацией
-func (s *UserServiceLayer) ListUsers(ctx context.Context, offset, limit int) ([]*domain.User, int, error) {
-	log.Printf("📝 Listing users: offset=%d, limit=%d", offset, limit)
+func (s *UserServiceLayer) ListUsers(ctx context.Context, req *domain.ListUsersRequest) (*domain.ListUsersResponse, error) {
+	log.Printf("📝 Listing users: org_id=%s, offset=%d, limit=%d, filters=%v", req.OrganizationID, req.Pagination.Offset, req.Pagination.Limit, req.Filters)
 
-	// Списки обычно не кэшируем, так как они часто меняются
-	users, err := s.UserRepo.List(ctx, offset, limit)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to list users: %w", err)
+	// 1. Извлекаем фильтры из map
+	var roleFilter *domain.Role
+	if roleStr, ok := req.Filters["role"]; ok && roleStr != "" {
+		role := domain.Role(roleStr)
+		roleFilter = &role
 	}
 
-	// Получаем общее количество
-	totalCount, err := s.UserRepo.Count(ctx)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to count users: %w", err)
+	var statusFilter *domain.UserStatus
+	if statusStr, ok := req.Filters["status"]; ok && statusStr != "" {
+		status := domain.UserStatus(statusStr)
+		statusFilter = &status
 	}
 
-	log.Printf("✅ Retrieved %d users (total: %d)", len(users), totalCount)
-	return users, totalCount, nil
+	var searchQuery string
+	if search, ok := req.Filters["search"]; ok {
+		searchQuery = search
+	}
+
+	// 2. Получаем список пользователей из репозитория
+	users, err := s.UserRepo.ListWithFilters(ctx, req.OrganizationID, roleFilter, statusFilter, searchQuery, req.Pagination.Offset, req.Pagination.Limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list users: %w", err)
+	}
+
+	// 3. Получаем общее количество
+	totalCount, err := s.UserRepo.CountWithFilters(ctx, req.OrganizationID, roleFilter, statusFilter, searchQuery)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count users: %w", err)
+	}
+
+	// 4. Определяем, есть ли ещё записи
+	hasMore := totalCount > req.Pagination.Offset+req.Pagination.Limit
+
+	log.Printf("✅ Retrieved %d users (total: %d, hasMore: %v)", len(users), totalCount, hasMore)
+
+	return &domain.ListUsersResponse{
+		Users:      users,
+		TotalCount: totalCount,
+		HasMore:    hasMore,
+	}, nil
 }
 
 // ListUsersByOrganization - получение списка пользователей организации
