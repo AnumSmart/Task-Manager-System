@@ -14,6 +14,8 @@ type UserDBRepository interface {
 	GetByEmail(ctx context.Context, email string) (*domain.User, error)
 	List(ctx context.Context, offset, limit int) ([]*domain.User, error)
 	Count(ctx context.Context) (int, error)
+	ListWithFilters(ctx context.Context, organizationID string, roleFilter *domain.Role, statusFilter *domain.UserStatus, searchQuery string, offset, limit int) ([]*domain.User, error)
+	CountWithFilters(ctx context.Context, organizationID string, roleFilter *domain.Role, statusFilter *domain.UserStatus, searchQuery string) (int, error)
 }
 
 // Интерфейс ТОЛЬКО для сервисного слоя (для тестов), для логики кэша
