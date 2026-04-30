@@ -89,6 +89,51 @@ func ToDomainUser(pbUser *commonv1.User) *domain.User {
 	return domainUser
 }
 
+// ToProtoUserWithPermissions конвертирует доменную модель в protobuf с учётом прав
+func ToProtoUserWithPermissions(targetUser, currentUser *domain.User) *commonv1.User {
+	if targetUser == nil {
+		return nil
+	}
+
+	// Всегда конвертируем базовые поля
+	pbUser := &commonv1.User{
+		Id:        targetUser.ID,
+		FullName:  targetUser.FullName,
+		CreatedAt: timestamppb.New(targetUser.CreatedAt),
+		UpdatedAt: timestamppb.New(targetUser.UpdatedAt),
+	}
+
+	// Если смотрим свои данные - показываем всё
+	if currentUser != nil && currentUser.ID == targetUser.ID {
+		pbUser.Email = targetUser.Email
+		pbUser.Role = toProtoRole(targetUser.Role)
+		pbUser.Status = toProtoStatus(targetUser.Status)
+		if targetUser.TelegramID != nil {
+			pbUser.TelegramId = targetUser.TelegramID
+		}
+		if targetUser.TelegramUsername != nil {
+			pbUser.TelegramUsername = targetUser.TelegramUsername
+		}
+		if targetUser.LastLoginAt != nil {
+			pbUser.LastLoginAt = timestamppb.New(*targetUser.LastLoginAt)
+		}
+		return pbUser
+	}
+
+	// Если текущий пользователь Owner или Manager - показываем почти всё
+	if currentUser != nil && (currentUser.Role == domain.RoleOwner || currentUser.Role == domain.RoleManager) {
+		pbUser.Email = targetUser.Email
+		pbUser.Role = toProtoRole(targetUser.Role)
+		pbUser.Status = toProtoStatus(targetUser.Status)
+		// Но скрываем Telegram данные для чужих пользователей (конфиденциальность)
+		// TelegramId и TelegramUsername не копируем
+		return pbUser
+	}
+
+	// Employee видит только базовые поля (id, имя, даты)
+	return pbUser
+}
+
 // ========== Конвертация для запросов ==========
 
 // ToDomainUserFromCreateRequest создает доменную модель из CreateUserRequest
@@ -134,8 +179,6 @@ func ToDomainUserUpdates(req *userv1.UpdateUserRequest) map[string]interface{} {
 	if req.Status != nil {
 		updates["status"] = toDomainStatus(req.GetStatus())
 	}
-
-	updates["updated_at"] = time.Now()
 
 	return updates
 }
@@ -183,6 +226,24 @@ func toDomainRole(role commonv1.Role) domain.Role {
 	}
 }
 
+// ToDomainRoleFilter конвертирует optional protobuf Role в указатель на domain.Role
+func ToDomainRoleFilter(role *commonv1.Role) *domain.Role {
+	if role == nil {
+		return nil
+	}
+	converted := toDomainRole(*role)
+	return &converted
+}
+
+// ToDomainStatusFilter конвертирует optional protobuf UserStatus в указатель на domain.UserStatus
+func ToDomainStatusFilter(status *commonv1.UserStatus) *domain.UserStatus {
+	if status == nil {
+		return nil
+	}
+	converted := toDomainStatus(*status)
+	return &converted
+}
+
 // ========== Конвертация enum (common.v1.UserStatus ↔ domain.UserStatus) ==========
 
 func toProtoStatus(status domain.UserStatus) commonv1.UserStatus {
@@ -208,5 +269,121 @@ func toDomainStatus(status commonv1.UserStatus) domain.UserStatus {
 		return domain.UserStatusSuspended
 	default:
 		return domain.UserStatusActive
+	}
+}
+
+// ========== запросы списка пользователей ==========
+
+// ToDomainListUsersRequest конвертирует protobuf ListUsersRequest в доменный ListUsersRequest
+func ToDomainListUsersRequest(requesterID, organizationID string, req *userv1.ListUsersRequest) *domain.ListUsersRequest {
+	if req == nil {
+		return nil
+	}
+
+	// Нормализация параметров пагинации
+	page := req.GetPage()
+	pageSize := req.GetPageSize()
+	offset, limit := ToPaginationParams(page, pageSize)
+
+	// Формируем фильтры
+	filters := make(map[string]string)
+
+	// Используем существующие функции для конвертации optional полей
+	if roleFilter := ToDomainRoleFilter(req.Role); roleFilter != nil {
+		filters["role"] = string(*roleFilter)
+	}
+
+	if statusFilter := ToDomainStatusFilter(req.Status); statusFilter != nil {
+		filters["status"] = string(*statusFilter)
+	}
+
+	// Если есть поисковый запрос (если добавите в proto позже)
+	// if req.Search != nil {
+	//     filters["search"] = req.GetSearch()
+	// }
+
+	return &domain.ListUsersRequest{
+		OrganizationID: organizationID,
+		RequesterID:    requesterID,
+		Filters:        filters,
+		Pagination: domain.Pagination{
+			Offset: offset,
+			Limit:  limit,
+		},
+	}
+}
+
+// ToPaginationParams - вспомогательная функция для нормализации параметров пагинации
+func ToPaginationParams(page, pageSize int32) (offset, limit int) {
+	normalizedPage := page
+	normalizedPageSize := pageSize
+
+	if normalizedPage < 1 {
+		normalizedPage = 1
+	}
+	if normalizedPageSize < 1 {
+		normalizedPageSize = 20
+	}
+	if normalizedPageSize > 100 {
+		normalizedPageSize = 100
+	}
+
+	offset = int((normalizedPage - 1) * normalizedPageSize)
+	limit = int(normalizedPageSize)
+
+	return offset, limit
+}
+
+// ToProtoListUsersResponse конвертирует доменный ListUsersResponse в protobuf
+func ToProtoListUsersResponse(resp *domain.ListUsersResponse, currentUser *domain.User, page, pageSize int32) *userv1.ListUsersResponse {
+	if resp == nil {
+		return &userv1.ListUsersResponse{
+			Success:      false,
+			ErrorMessage: "пустой ответ",
+		}
+	}
+
+	// Конвертируем пользователей
+	pbUsers := make([]*commonv1.User, 0, len(resp.Users))
+	for _, user := range resp.Users {
+		pbUsers = append(pbUsers, ToProtoUserWithPermissions(user, currentUser))
+	}
+
+	// Рассчитываем пагинацию
+	totalPages := (resp.TotalCount + int(pageSize) - 1) / int(pageSize)
+
+	return &userv1.ListUsersResponse{
+		Success: true,
+		Users:   pbUsers,
+		Pagination: &commonv1.Pagination{
+			Page:       page,
+			PageSize:   pageSize,
+			Total:      int32(resp.TotalCount),
+			TotalPages: int32(totalPages),
+		},
+		ErrorMessage: "",
+	}
+}
+
+// ToProtoListUsersResponseForSingleUser создает ListUsersResponse для одного пользователя
+// Используется для Employee, который видит только свой профиль
+func ToProtoListUsersResponseForSingleUser(user *domain.User) *userv1.ListUsersResponse {
+	if user == nil {
+		return &userv1.ListUsersResponse{
+			Success:      false,
+			ErrorMessage: "пользователь не найден",
+		}
+	}
+
+	return &userv1.ListUsersResponse{
+		Success: true,
+		Users:   []*commonv1.User{ToProtoUser(user)},
+		Pagination: &commonv1.Pagination{
+			Page:       1,
+			PageSize:   1,
+			Total:      1,
+			TotalPages: 1,
+		},
+		ErrorMessage: "",
 	}
 }
