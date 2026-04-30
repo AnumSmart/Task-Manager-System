@@ -4,6 +4,7 @@ import (
 	pb "api/gen/go/user/v1"
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"user-service/internal/converter"
 	"user-service/internal/domain"
@@ -90,7 +91,58 @@ func (s *UserServerHandler) GetUser(ctx context.Context, req *pb.GetUserRequest)
 
 	log.Printf("📝 GetUser вызван: user_id=%s", req.GetUserId())
 
-	return &pb.GetUserResponse{}, nil
+	// 1. Извлекаем данные текущего пользователя из контекста (добавлены интерсептором)
+	currentUserID, ok := ctx.Value(interceptors.ContextKeyUserID).(string)
+	if !ok || currentUserID == "" {
+		return nil, status.Error(codes.Unauthenticated, "не удалось получить ID текущего пользователя")
+	}
+
+	currentUserRole, _ := ctx.Value(interceptors.ContextKeyRole).(string)
+	currentUserOrgID, _ := ctx.Value(interceptors.ContextKeyOrganizationID).(string)
+
+	log.Printf("🔐 Текущий пользователь: id=%s, role=%s, org_id=%s", currentUserID, currentUserRole, currentUserOrgID)
+
+	// 2. Валидация входных данных
+	if req.GetUserId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "user_id обязателен")
+	}
+
+	// 3. Получаем запрашиваемого пользователя через сервисный слой
+	targetUser, err := s.UserServerService.User.GetUserByID(ctx, req.GetUserId())
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			log.Printf("❌ Пользователь не найден: %s", req.GetUserId())
+			return nil, status.Error(codes.NotFound, "пользователь не найден")
+		}
+		log.Printf("❌ Ошибка получения пользователя: %v", err)
+		return nil, status.Error(codes.Internal, "внутренняя ошибка сервера")
+	}
+
+	// 4. Получаем полные данные текущего пользователя (для проверки прав)
+	//    Нужно получить из БД, т.к. в контексте только ID, роль и org_id
+	currentUser, err := s.UserServerService.User.GetUserByID(ctx, currentUserID)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			log.Printf("❌ Текущий пользователь не найден: %s", currentUserID)
+			return nil, status.Error(codes.Unauthenticated, "пользователь не найден")
+		}
+		log.Printf("❌ Ошибка получения текущего пользователя: %v", err)
+		return nil, status.Error(codes.Internal, "внутренняя ошибка сервера")
+	}
+
+	// 5. Проверяем права доступа
+	if !s.canAccessUser(currentUser, targetUser) {
+		log.Printf("⚠️ Доступ запрещён: пользователь %s (role=%s, org=%s) пытается получить данные пользователя %s (role=%s, org=%s)",
+			currentUser.ID, currentUser.Role, currentUser.OrganizationID,
+			targetUser.ID, targetUser.Role, targetUser.OrganizationID)
+		return nil, status.Error(codes.PermissionDenied, "доступ запрещён")
+	}
+	// Используем конвертер с правами
+	response := &pb.GetUserResponse{
+		User: converter.ToProtoUserWithPermissions(targetUser, currentUser),
+	}
+
+	return response, nil
 }
 
 // UpdateUser - обновление данных пользователя
@@ -105,7 +157,104 @@ func (s *UserServerHandler) UpdateUser(ctx context.Context, req *pb.UpdateUserRe
 
 	log.Printf("📝 UpdateUser вызван: user_id=%s", req.GetUserId())
 
-	return &pb.UpdateUserResponse{}, nil
+	// 1. Извлекаем ID текущего пользователя из контекста
+	currentUserID, ok := ctx.Value(interceptors.ContextKeyUserID).(string)
+	if !ok || currentUserID == "" {
+		return nil, status.Error(codes.Unauthenticated, "не удалось получить ID текущего пользователя")
+	}
+
+	// 2. Валидация входных данных
+	if req.GetUserId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "user_id обязателен")
+	}
+
+	// 3. Формируем map обновлений из запроса (используем конвертер)
+	updates := converter.ToDomainUserUpdates(req)
+
+	// 4. Если нет полей для обновления, возвращаем текущего пользователя
+	if len(updates) == 0 {
+		log.Printf("⚠️ Нет полей для обновления пользователя %s", req.GetUserId())
+
+		// Получаем текущие данные пользователя для ответа
+		targetUser, err := s.UserServerService.User.GetUserByID(ctx, req.GetUserId())
+		if err != nil {
+			if errors.Is(err, domain.ErrUserNotFound) {
+				return nil, status.Error(codes.NotFound, "пользователь не найден")
+			}
+			return nil, status.Error(codes.Internal, "внутренняя ошибка сервера")
+		}
+
+		// Получаем текущего пользователя (для прав в ответе)
+		currentUser, err := s.UserServerService.User.GetUserByID(ctx, currentUserID)
+		if err != nil {
+			return nil, status.Error(codes.Internal, "внутренняя ошибка сервера")
+		}
+
+		return &pb.UpdateUserResponse{
+			User: converter.ToProtoUserWithPermissions(targetUser, currentUser),
+		}, nil
+	}
+
+	// 5. Вызываем сервисный слой
+	err := s.UserServerService.User.UpdateUser(ctx, &domain.UpdateUserRequest{
+		UserID:      req.GetUserId(),
+		RequesterID: currentUserID,
+		Updates:     updates,
+	})
+
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrUserNotFound):
+			log.Printf("❌ Пользователь не найден: %s", req.GetUserId())
+			return nil, status.Error(codes.NotFound, "пользователь не найден")
+
+		case errors.Is(err, domain.ErrUserAlreadyExists):
+			log.Printf("❌ Email уже используется: %s", req.GetEmail())
+			return nil, status.Error(codes.AlreadyExists, "пользователь с таким email уже существует")
+
+		case errors.Is(err, domain.ErrPermissionDenied):
+			log.Printf("❌ Доступ запрещён: пользователь %s пытается обновить %s", currentUserID, req.GetUserId())
+			return nil, status.Error(codes.PermissionDenied, "доступ запрещён")
+
+		case errors.Is(err, domain.ErrInvalidEmail):
+			log.Printf("❌ Неверный формат email: %s", req.GetEmail())
+			return nil, status.Error(codes.InvalidArgument, "неверный формат email")
+
+		case errors.Is(err, domain.ErrInvalidRoleTransition):
+			log.Printf("❌ Недопустимое изменение роли: %v", err)
+			return nil, status.Error(codes.PermissionDenied, "недопустимое изменение роли")
+
+		default:
+			log.Printf("❌ Ошибка обновления пользователя: %v", err)
+			return nil, status.Error(codes.Internal, "внутренняя ошибка сервера")
+		}
+	}
+
+	log.Printf("✅ UpdateUser успешно выполнен: user_id=%s", req.GetUserId())
+
+	// 6. Получаем обновлённые данные для ответа
+	updatedUser, err := s.UserServerService.User.GetUserByID(ctx, req.GetUserId())
+	if err != nil {
+		// Даже если не получили обновлённые данные, возвращаем успех
+		log.Printf("⚠️ Не удалось получить обновлённые данные пользователя: %v", err)
+		return &pb.UpdateUserResponse{
+			Success:      true,
+			ErrorMessage: fmt.Sprintf("⚠️ Не удалось получить обновлённые данные пользователя"),
+		}, nil
+	}
+
+	// 7. Получаем текущего пользователя (для прав в ответе)
+	currentUser, err := s.UserServerService.User.GetUserByID(ctx, currentUserID)
+	if err != nil {
+		log.Printf("⚠️ Не удалось получить данные текущего пользователя: %v", err)
+		return &pb.UpdateUserResponse{
+			User: converter.ToProtoUser(updatedUser),
+		}, nil
+	}
+
+	return &pb.UpdateUserResponse{
+		User: converter.ToProtoUserWithPermissions(updatedUser, currentUser),
+	}, nil
 }
 
 // DeleteUser - удаление или деактивация пользователя
@@ -120,7 +269,54 @@ func (s *UserServerHandler) DeleteUser(ctx context.Context, req *pb.DeleteUserRe
 
 	log.Printf("📝 DeleteUser вызван: user_id=%s", req.GetUserId())
 
-	return &pb.DeleteUserResponse{}, nil
+	// 1. Извлекаем ID текущего пользователя из контекста
+	currentUserID, ok := ctx.Value(interceptors.ContextKeyUserID).(string)
+	if !ok || currentUserID == "" {
+		return nil, status.Error(codes.Unauthenticated, "не удалось получить ID текущего пользователя")
+	}
+
+	// 2. Валидация входных данных
+	if req.GetUserId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "user_id обязателен")
+	}
+
+	// 3. Нельзя удалить самого себя (дополнительная проверка на уровне хэндлера)
+	if currentUserID == req.GetUserId() {
+		log.Printf("⚠️ Пользователь %s попытался удалить сам себя", currentUserID)
+		return nil, status.Error(codes.PermissionDenied, "нельзя удалить свой собственный аккаунт")
+	}
+
+	// 4. Преобразуем soft_delete в hard_delete (инвертируем логику)
+	hardDelete := !req.GetSoftDelete()
+
+	// 4. Вызываем сервисный слой
+	err := s.UserServerService.User.DeleteUser(ctx, &domain.DeleteUserRequest{
+		UserID:      req.GetUserId(),
+		RequesterID: currentUserID,
+		HardDelete:  hardDelete, // false по умолчанию (soft delete)
+	})
+
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrUserNotFound):
+			log.Printf("❌ Пользователь не найден: %s", req.GetUserId())
+			return nil, status.Error(codes.NotFound, "пользователь не найден")
+
+		case errors.Is(err, domain.ErrPermissionDenied):
+			log.Printf("❌ Доступ запрещён: пользователь %s пытается удалить %s", currentUserID, req.GetUserId())
+			return nil, status.Error(codes.PermissionDenied, "только владелец организации может удалять пользователей")
+
+		default:
+			log.Printf("❌ Ошибка удаления пользователя: %v", err)
+			return nil, status.Error(codes.Internal, "внутренняя ошибка сервера")
+		}
+	}
+
+	log.Printf("✅ DeleteUser успешно выполнен: user_id=%s, soft_delete=%v", req.GetUserId(), req.GetSoftDelete())
+
+	return &pb.DeleteUserResponse{
+		Success: true,
+	}, nil
 }
 
 // ListUsers - получение списка пользователей с фильтрацией и пагинацией
@@ -133,5 +329,65 @@ func (s *UserServerHandler) ListUsers(ctx context.Context, req *pb.ListUsersRequ
 	default:
 	}
 
-	return &pb.ListUsersResponse{}, nil
+	// 1. Извлекаем данные текущего пользователя из контекста
+	currentUserID, ok := ctx.Value(interceptors.ContextKeyUserID).(string)
+	if !ok || currentUserID == "" {
+		return &pb.ListUsersResponse{
+			Success:      false,
+			ErrorMessage: "не авторизован",
+		}, nil
+	}
+
+	// 2. Получаем полные данные текущего пользователя
+	currentUser, err := s.UserServerService.User.GetUserByID(ctx, currentUserID)
+	if err != nil {
+		log.Printf("❌ Ошибка получения текущего пользователя: %v", err)
+		return &pb.ListUsersResponse{
+			Success:      false,
+			ErrorMessage: "внутренняя ошибка сервера",
+		}, nil
+	}
+
+	// 3. Обработка Employee (только себя)
+	if currentUser.Role == domain.RoleEmployee {
+		log.Printf("🔐 Employee %s запрашивает только свой профиль", currentUserID)
+		return converter.ToProtoListUsersResponseForSingleUser(currentUser), nil
+	}
+
+	// 4. Конвертируем запрос в доменную структуру
+	listReq := converter.ToDomainListUsersRequest(currentUserID, currentUser.OrganizationID, req)
+
+	// 5. Вызываем сервисный слой
+	listResp, err := s.UserServerService.User.ListUsers(ctx, listReq)
+	if err != nil {
+		log.Printf("❌ Ошибка получения списка пользователей: %v", err)
+		return &pb.ListUsersResponse{
+			Success:      false,
+			ErrorMessage: "внутренняя ошибка сервера",
+		}, nil
+	}
+
+	// 6. Конвертируем ответ в protobuf
+	return converter.ToProtoListUsersResponse(listResp, currentUser, req.GetPage(), req.GetPageSize()), nil
+}
+
+// canAccessUser (вспомогательная функция) - проверяет, может ли currentUser получить данные targetUser
+func (s *UserServerHandler) canAccessUser(currentUser, targetUser *domain.User) bool {
+	// Свои данные всегда можно посмотреть
+	if currentUser.ID == targetUser.ID {
+		return true
+	}
+
+	// Пользователи должны быть из одной организации
+	if currentUser.OrganizationID != targetUser.OrganizationID {
+		return false
+	}
+
+	// Owner и Manager могут видеть всех в своей организации
+	switch currentUser.Role {
+	case domain.RoleOwner, domain.RoleManager:
+		return true
+	default:
+		return false
+	}
 }
