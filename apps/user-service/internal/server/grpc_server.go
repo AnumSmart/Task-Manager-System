@@ -58,10 +58,15 @@ func (s *GRPCUserServer) Run() error {
 		grpc.MaxSendMsgSize(s.config.MaxSendMsgSize), // Максимальный размер отправляемого сообщения - тоже 10 МБ
 
 		// Chain объединяет несколько интерсепторов
+		// Важно: порядок имеет значение!
+		// Снизу вверх: Recovery → Logging → APIKey → JWT → Public → Handler
 		grpc.ChainUnaryInterceptor(
-			interceptors.RecoveryInterceptor,                // 1. САМЫЙ ПЕРВЫЙ - ловит паники
-			interceptors.UnaryJWTInterceptor(s.AuthService), // 2. JWT проверка
-			interceptors.LoggingInterceptor,                 // 3. Логирование (уже знает user_id)
+			interceptors.RecoveryInterceptor,                              // 1. САМЫЙ ПЕРВЫЙ - ловит паники
+			interceptors.LoggingInterceptor,                               // 2. Логирование (уже знает user_id)
+			interceptors.UnaryAPIKeyInterceptor(s.config.AllowedServices), // 3. Проверяет API Key
+			interceptors.UnaryJWTInterceptor(s.AuthService),               // 4. JWT проверка
+			interceptors.UnaryPublicInterceptor(),                         // 5. Просто логирует вызов public методов
+
 			// сюда можно добавить другие интерсепторы:
 			// interceptors.AuthInterceptor,
 			// interceptors.RateLimitInterceptor,

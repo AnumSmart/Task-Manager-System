@@ -3,9 +3,11 @@ package handler
 import (
 	pb "api/gen/go/user/v1"
 	"context"
+	"errors"
 	"log"
 	"user-service/internal/converter"
 	"user-service/internal/domain"
+	"user-service/internal/server/interceptors"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -86,39 +88,46 @@ func (s *UserServerHandler) SetupInitialOrganization(ctx context.Context, req *p
 	// Временно создаём пользователя без проверки прав (можно добавить флаг systemInit)
 	user, err = s.UserServerService.User.CreateUserSystem(ctx, createUserReq, req.GetOwnerPassword())
 	if err != nil {
-		// Пользователь с таким email уже есть в БД
-		existingUser, getUserErr := s.UserServerService.User.GetUserByEmail(ctx, req.GetOwnerEmail())
-		if getUserErr != nil {
-			log.Printf("❌ SetupInitialOrganization: user exists but failed to fetch: %v", getUserErr)
-			_ = s.UserServerService.Organization.DeleteOrganization(ctx, org.ID)
-			return nil, status.Error(codes.Internal, "failed to verify existing user")
-		}
+		// Проверяем, может пользователь уже существует?
+		if errors.Is(err, domain.ErrUserAlreadyExists) {
+			// Пользователь с таким email уже есть в БД
+			existingUser, getUserErr := s.UserServerService.User.GetUserByEmail(ctx, req.GetOwnerEmail())
+			if getUserErr != nil {
+				log.Printf("❌ SetupInitialOrganization: user exists but failed to fetch: %v", getUserErr)
+				_ = s.UserServerService.Organization.DeleteOrganization(ctx, org.ID)
+				return nil, status.Error(codes.Internal, "failed to verify existing user")
+			}
 
-		// Проверяем, что пользователь имеет роль OWNER
-		if existingUser.Role != domain.RoleOwner {
-			_ = s.UserServerService.Organization.DeleteOrganization(ctx, org.ID)
-			return &pb.SetupInitialOrganizationResponse{
-				Success:      false,
-				ErrorMessage: "user with this email already exists but is not an owner",
-			}, nil
-		}
+			// Проверяем, что пользователь имеет роль OWNER
+			if existingUser.Role != domain.RoleOwner {
+				_ = s.UserServerService.Organization.DeleteOrganization(ctx, org.ID)
+				return &pb.SetupInitialOrganizationResponse{
+					Success:      false,
+					ErrorMessage: "user with this email already exists but is not an owner",
+				}, nil
+			}
 
-		// Проверяем, что пользователь принадлежит этой организации
-		if existingUser.OrganizationID != org.ID {
-			_ = s.UserServerService.Organization.DeleteOrganization(ctx, org.ID)
-			return &pb.SetupInitialOrganizationResponse{
-				Success:      false,
-				ErrorMessage: "user with this email belongs to another organization",
-			}, nil
-		}
+			// Проверяем, что пользователь принадлежит этой организации
+			if existingUser.OrganizationID != org.ID {
+				_ = s.UserServerService.Organization.DeleteOrganization(ctx, org.ID)
+				return &pb.SetupInitialOrganizationResponse{
+					Success:      false,
+					ErrorMessage: "user with this email belongs to another organization",
+				}, nil
+			}
 
-		// Всё хорошо — используем существующего пользователя
-		user = existingUser
-		log.Printf("📝 SetupInitialOrganization: using existing owner user: %s", user.ID)
+			// Всё хорошо — используем существующего пользователя
+			user = existingUser
+			log.Printf("📝 SetupInitialOrganization: using existing owner user: %s", user.ID)
+		} else {
+			// Другая ошибка при создании пользователя
+			log.Printf("❌ SetupInitialOrganization error creating user: %v", err)
+			_ = s.UserServerService.Organization.DeleteOrganization(ctx, org.ID)
+			return nil, status.Error(codes.Internal, "failed to create owner user")
+		}
 	} else {
-		_ = s.UserServerService.Organization.DeleteOrganization(ctx, org.ID)
-		log.Printf("❌ SetupInitialOrganization error creating user: %v", err)
-		return nil, status.Error(codes.Internal, "failed to create owner user")
+		// Пользователь успешно создан
+		log.Printf("📝 SetupInitialOrganization: created new owner user: %s", user.ID)
 	}
 
 	// 7. Обновляем организацию: устанавливаем OwnerID
@@ -145,14 +154,54 @@ func (s *UserServerHandler) SetupInitialOrganization(ctx context.Context, req *p
 	}, nil
 }
 
-// GetOrganization - получение информации об организации
+// GetOrganization - получение информации об организации текущего пользователя
+// Organization ID извлекается из JWT токена в metadata
 func (s *UserServerHandler) GetOrganization(ctx context.Context, req *pb.GetOrganizationRequest) (*pb.GetOrganizationResponse, error) {
+	// 1. Проверка контекста (graceful shutdown)
 	select {
 	case <-ctx.Done():
-		log.Printf("❌ Контекст отменён: %v", ctx.Err())
+		log.Printf("❌ GetOrganization: контекст отменён: %v", ctx.Err())
 		return nil, ctx.Err()
 	default:
 	}
 
-	return &pb.GetOrganizationResponse{}, nil
+	log.Printf("📝 GetOrganization вызван: request_id=%s", req.GetRequestId())
+
+	// 2. Извлечение organization_id из контекста (добавлен интерсептором)
+	orgID, ok := ctx.Value(interceptors.ContextKeyOrganizationID).(string)
+	if !ok || orgID == "" {
+		log.Printf("❌ GetOrganization: organization_id не найден в контексте")
+		return &pb.GetOrganizationResponse{
+			Success:      false,
+			ErrorMessage: "не авторизован",
+		}, nil
+	}
+
+	// 3. Вызов сервисного слоя для получения организации
+	org, err := s.UserServerService.Organization.GetOrganizationByID(ctx, orgID)
+	if err != nil {
+		log.Printf("❌ GetOrganization: ошибка получения организации org_id=%s: %v", orgID, err)
+
+		// Маппинг ошибок
+		if errors.Is(err, domain.ErrOrganizationNotFound) {
+			return &pb.GetOrganizationResponse{
+				Success:      false,
+				ErrorMessage: "организация не найдена",
+			}, nil
+		}
+
+		return &pb.GetOrganizationResponse{
+			Success:      false,
+			ErrorMessage: "не удалось получить информацию об организации",
+		}, nil
+	}
+
+	// 4. Конвертация доменной модели в protobuf
+	pbOrg := converter.ToProtoOrganization(org)
+
+	log.Printf("✅ GetOrganization успешно: org_id=%s, name=%s", org.ID, org.Name)
+	return &pb.GetOrganizationResponse{
+		Success:      true,
+		Organization: pbOrg,
+	}, nil
 }

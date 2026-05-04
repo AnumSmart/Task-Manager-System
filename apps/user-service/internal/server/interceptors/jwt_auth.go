@@ -38,6 +38,9 @@ const (
 
 	// ContextKeyClaims - ключ для всех claims
 	ContextKeyClaims contextKey = "claims"
+
+	// ContextKeyServiceName - ключ для имени сервиса (при API Key auth)
+	ContextKeyServiceName contextKey = "service_name"
 )
 
 // UnaryJWTInterceptor создает интерсептор для JWT авторизации
