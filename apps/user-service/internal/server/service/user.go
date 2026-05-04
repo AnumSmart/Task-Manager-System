@@ -290,6 +290,32 @@ func (s *UserServiceLayer) UpdateUser(ctx context.Context, req *domain.UpdateUse
 	return nil
 }
 
+// UpdateMyProfile - обновление профиля текущего пользователя
+func (s *UserServiceLayer) UpdateMyProfile(ctx context.Context, userID string, fullName *string) error {
+	log.Printf("📝 UpdateMyProfile: userID=%s", userID)
+
+	// Подготавливаем обновления
+	updates := make(map[string]interface{})
+	if fullName != nil && *fullName != "" {
+		updates["full_name"] = *fullName
+	}
+
+	// Если нет полей для обновления, просто возвращаем nil
+	if len(updates) == 0 {
+		log.Printf("UpdateMyProfile: нет полей для обновления")
+		return nil
+	}
+
+	// Вызываем существующий UpdateUser
+	req := &domain.UpdateUserRequest{
+		UserID:      userID,
+		RequesterID: userID, // Обновляем свой профиль, поэтому requester = target
+		Updates:     updates,
+	}
+
+	return s.UpdateUser(ctx, req)
+}
+
 // DeleteUser - удаление пользователя
 func (s *UserServiceLayer) DeleteUser(ctx context.Context, req *domain.DeleteUserRequest) error {
 	log.Printf("📝 Deleting user: ID=%s by %s (hard=%v)", req.UserID, req.RequesterID, req.HardDelete)

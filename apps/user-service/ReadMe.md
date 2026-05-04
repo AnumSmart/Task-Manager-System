@@ -37,8 +37,10 @@ user-service/
 │ │ └── errors.go                             # domain errors
 │ ├── server/
 │ │ ├── interceptors/                         # Интерсепторы
+│ │ |     ├── api_key_auth.go                 # Интерсептор для внутренней межсервисной авторизации (api key)
 │ │ |     ├── jwt_auth.go                     # Интерсептор для авторизации (jwt)
 │ │ |     ├── method_classifier.go            # Классификатор методов для использования интерсептором
+│ │ |     ├── public.go                       # Интерсептор для логирования вызова public методов
 │ │ |     ├── logging.go                      # Интерсептор для логирования
 │ │ |     └── recovery.go                     # Интерсептор для ловли паники
 │ │ ├── handler/                              # Слой хэндлеров (удовлетворяют grpc интерфейсу)
@@ -140,7 +142,7 @@ user-service/
 │  └───────────────────────────────────────────────────────────┘  │
 │                                                                 │
 │  Хранилище в Redis:                                             │
-│  • refresh:{user_id}:{token_hash} → user_id (7 days TTL)        │
+│  • refresh:{session_id} → {token_hash} (7 days TTL)        │
 │  • blacklist:{token_hash} → expiry (до истечения access token)  │
 └────────────────────────────┬────────────────────────────────────┘
                              │
@@ -252,12 +254,11 @@ user-service/
 │ ЭТАП 4: Выход из системы (Logout)                               │
 ├─────────────────────────────────────────────────────────────────┤
 │ Telegram Bot:                                                   │
-│ 1. Вызывает user-service.Logout(access_token, refresh_token)    │
+│ 1. Вызывает user-service.Logout(access_token)                   │
 │                              │                                  │
 │                              ▼                                  │
 │ User Service:                                                   │
-│ 1. Добавляет access token в blacklist (Redis, до его expiry)    │
-│ 2. Удаляет refresh token из Redis                               │
+│ 1. Удаляет refresh token из Redis                               │
 │                              │                                  │
 │                              ▼                                  │
 │ Telegram Bot:                                                   │

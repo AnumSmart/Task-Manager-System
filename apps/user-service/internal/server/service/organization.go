@@ -162,3 +162,23 @@ func (o *OrganizationLayer) ActivateOrganization(ctx context.Context, orgID stri
 	log.Printf("✅ Organization activated: org_id=%s, owner_id=%s", orgID, owner.ID)
 	return nil
 }
+
+// получает ID организации
+// GetOrganizationByID - получение организации по ID
+func (s *OrganizationLayer) GetOrganizationByID(ctx context.Context, orgID string) (*domain.Organization, error) {
+	// Валидация входных данных
+	if orgID == "" {
+		return nil, domain.ErrInvalidOrganizationID
+	}
+
+	// Вызов метода репозитория
+	org, err := s.OrgRepo.GetOrganizationByID(ctx, orgID)
+	if err != nil {
+		if errors.Is(err, domain.ErrOrganizationNotFound) {
+			return nil, domain.ErrOrganizationNotFound
+		}
+		return nil, fmt.Errorf("failed to get organization by id: %w", err)
+	}
+
+	return org, nil
+}

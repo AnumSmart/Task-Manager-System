@@ -3,8 +3,11 @@ package handler
 import (
 	pb "api/gen/go/user/v1"
 	"context"
+	"errors"
 	"log"
 	"user-service/internal/converter"
+	"user-service/internal/domain"
+	"user-service/internal/server/interceptors"
 )
 
 // LinkTelegram - привязка Telegram аккаунта к существующему пользователю
@@ -95,11 +98,37 @@ func (s *UserServerHandler) GetMyProfile(ctx context.Context, req *pb.GetMyProfi
 
 	log.Printf("📝 GetMyProfile вызван: telegram_id=%s", req.GetRequestId())
 
-	return &pb.GetUserResponse{}, nil
+	// Извлечение user_id из контекста (добавлен интерсептором)
+	userID, ok := ctx.Value(interceptors.ContextKeyUserID).(string)
+	if !ok || userID == "" {
+		return &pb.GetUserResponse{
+			Success:      false,
+			ErrorMessage: "не авторизован",
+		}, nil
+	}
+
+	// Вызов сервисного слоя
+	user, err := s.UserServerService.User.GetUserByID(ctx, userID)
+	if err != nil {
+		log.Printf("❌ GetMyProfile: ошибка получения пользователя: %v", err)
+		return &pb.GetUserResponse{
+			Success:      false,
+			ErrorMessage: err.Error(),
+		}, nil
+	}
+
+	// Конвертация в protobuf
+	pbUser := converter.ToProtoUser(user)
+
+	return &pb.GetUserResponse{
+		Success: true,
+		User:    pbUser,
+	}, nil
 }
 
 // UpdateMyProfile - обновление своего профиля
 func (s *UserServerHandler) UpdateMyProfile(ctx context.Context, req *pb.UpdateMyProfileRequest) (*pb.GetUserResponse, error) {
+	// 1. Проверка контекста (graceful shutdown)
 	select {
 	case <-ctx.Done():
 		log.Printf("❌ Контекст отменён: %v", ctx.Err())
@@ -109,7 +138,65 @@ func (s *UserServerHandler) UpdateMyProfile(ctx context.Context, req *pb.UpdateM
 
 	log.Printf("📝 UpdateMyProfile вызван: telegram_id=%s", req.GetRequestId())
 
-	return &pb.GetUserResponse{}, nil
+	// 2. Извлечение user_id из контекста (добавлен интерсептором)
+	userID, ok := ctx.Value(interceptors.ContextKeyUserID).(string)
+	if !ok || userID == "" {
+		log.Printf("❌ UpdateMyProfile: user_id не найден в контексте")
+		return &pb.GetUserResponse{
+			Success:      false,
+			ErrorMessage: "не авторизован",
+		}, nil
+	}
+
+	// 3. Получаем full_name из запроса (если передан)
+	var fullName *string
+	if req.FullName != nil {
+		fullName = req.FullName
+	}
+
+	// 4. Вызов сервисного слоя
+	err := s.UserServerService.User.UpdateMyProfile(ctx, userID, fullName)
+	if err != nil {
+		log.Printf("❌ UpdateMyProfile: ошибка обновления пользователя user_id=%s: %v", userID, err)
+
+		// Маппинг ошибок
+		switch {
+		case errors.Is(err, domain.ErrUserNotFound):
+			return &pb.GetUserResponse{
+				Success:      false,
+				ErrorMessage: "пользователь не найден",
+			}, nil
+		case errors.Is(err, domain.ErrPermissionDenied):
+			return &pb.GetUserResponse{
+				Success:      false,
+				ErrorMessage: "нет прав для обновления профиля",
+			}, nil
+		default:
+			return &pb.GetUserResponse{
+				Success:      false,
+				ErrorMessage: "не удалось обновить профиль",
+			}, nil
+		}
+	}
+
+	// 5. После успешного обновления получаем актуальные данные пользователя
+	updatedUser, err := s.UserServerService.User.GetUserByID(ctx, userID)
+	if err != nil {
+		log.Printf("❌ UpdateMyProfile: ошибка получения обновлённого пользователя: %v", err)
+		return &pb.GetUserResponse{
+			Success:      false,
+			ErrorMessage: "профиль обновлён, но не удалось получить актуальные данные",
+		}, nil
+	}
+
+	// 6. Конвертация в protobuf
+	pbUser := converter.ToProtoUser(updatedUser)
+
+	log.Printf("✅ UpdateMyProfile успешно: user_id=%s, full_name=%s", userID, updatedUser.FullName)
+	return &pb.GetUserResponse{
+		Success: true,
+		User:    pbUser,
+	}, nil
 }
 
 // Logout - - выход из системы (отзыв JWT токена)
