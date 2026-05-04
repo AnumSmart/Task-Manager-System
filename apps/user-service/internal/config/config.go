@@ -35,6 +35,22 @@ func LoadConfig() (*UserServiceConfig, error) {
 		return nil, fmt.Errorf("Error during loading config: %s\n", err.Error())
 	}
 
+	// 🔑 Загружаем API Keys из переменных окружения (перезаписываем то, что было в YAML)
+	if grpcServerConfig.AllowedServices == nil {
+		grpcServerConfig.AllowedServices = make(map[string]string) // инициализируем мапу, если была не инициализирована
+	}
+
+	// Добавляем ключи из .env для каждого сервиса
+	if key := os.Getenv("TASK_SERVICE_API_KEY"); key != "" {
+		grpcServerConfig.AllowedServices["task-service"] = key
+	}
+	if key := os.Getenv("ANALYTICS_SERVICE_API_KEY"); key != "" {
+		grpcServerConfig.AllowedServices["analytics-service"] = key
+	}
+	if key := os.Getenv("NOTIFICATION_SERVICE_API_KEY"); key != "" {
+		grpcServerConfig.AllowedServices["notification-service"] = key
+	}
+
 	// загружаем данные из .env файла для postgresDBConfig
 	postgresDBConfig, err := configs.NewPostgresDBConfigFromEnv()
 	if err != nil {
