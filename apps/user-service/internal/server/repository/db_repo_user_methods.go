@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
+	"github.com/lib/pq"
 )
 
 // метод для создания юзера в базе данных
@@ -121,6 +122,170 @@ func (db *UserServiceDBRepository) GetByID(ctx context.Context, id string) (*dom
 	}
 
 	return &user, nil
+}
+
+// метод получения пользователя по телеграмм ID
+func (db *UserServiceDBRepository) GetByTelegramID(ctx context.Context, telegramID int64) (*domain.User, error) {
+	// 1. Проверка контекста
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("context cancelled: %w", ctx.Err())
+	default:
+	}
+
+	// 2. Валидация входных данных
+	if telegramID == 0 {
+		return nil, domain.ErrInvalidInput
+	}
+
+	// 3. SQL запрос (без пароля, так как он не нужен для поиска по Telegram)
+	query := `
+		SELECT 
+			id, 
+			email, 
+			telegram_id, 
+			telegram_username, 
+			role, 
+			status, 
+			full_name, 
+			organization_id, 
+			created_at, 
+			updated_at, 
+			last_login_at, 
+			deleted_at
+		FROM users 
+		WHERE telegram_id = $1
+		LIMIT 1
+	`
+
+	user := &domain.User{}
+
+	// Для nullable полей
+	var telegramIDNull sql.NullInt64
+	var telegramUsernameNull sql.NullString
+	var lastLoginAtNull sql.NullTime
+	var deletedAtNull sql.NullTime
+
+	// 4. Выполнение запроса
+	err := db.Pool.QueryRow(ctx, query, telegramID).Scan(
+		&user.ID,
+		&user.Email,
+		&telegramIDNull,
+		&telegramUsernameNull,
+		&user.Role,
+		&user.Status,
+		&user.FullName,
+		&user.OrganizationID,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+		&lastLoginAtNull,
+		&deletedAtNull,
+	)
+
+	if err != nil {
+		// 5. Обработка ошибок
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrUserNotFound
+		}
+		return nil, fmt.Errorf("failed to get user by telegram_id %d: %w", telegramID, err)
+	}
+
+	// 6. Заполнение nullable полей
+	if telegramIDNull.Valid {
+		telegramID := telegramIDNull.Int64
+		user.TelegramID = &telegramID
+	}
+
+	if telegramUsernameNull.Valid {
+		user.TelegramUsername = &telegramUsernameNull.String
+	}
+
+	if lastLoginAtNull.Valid {
+		user.LastLoginAt = &lastLoginAtNull.Time
+	}
+
+	if deletedAtNull.Valid {
+		user.DeletedAt = &deletedAtNull.Time
+	}
+
+	// 7. Убедимся, что Telegram ID совпадает (дополнительная проверка)
+	if !user.IsTelegramLinked() {
+		return nil, fmt.Errorf("inconsistent state: telegram_id in DB but not set in user object")
+	}
+
+	return user, nil
+}
+
+// метод получения списка пользователей по списку ID
+func (db *UserServiceDBRepository) BatchGetByIDs(ctx context.Context, ids []string) ([]*domain.User, error) {
+	if len(ids) == 0 {
+		return []*domain.User{}, nil
+	}
+
+	// Используем параметризованный запрос с ANY
+	query := `
+        SELECT id, email, telegram_id, telegram_username, role, status, 
+               full_name, organization_id, created_at, updated_at, 
+               last_login_at, deleted_at, password_hash
+        FROM users 
+        WHERE id = ANY($1) AND deleted_at IS NULL
+    `
+	rows, err := db.Pool.Query(ctx, query, pq.Array(ids))
+	if err != nil {
+		return nil, fmt.Errorf("failed to batch get users: %w", err)
+	}
+	defer rows.Close()
+
+	users := make([]*domain.User, 0, len(ids))
+	for rows.Next() {
+		user := &domain.User{}
+
+		var telegramID sql.NullInt64
+		var telegramUsername sql.NullString
+		var lastLoginAt, deletedAt sql.NullTime
+
+		err := rows.Scan(
+			&user.ID,
+			&user.Email,
+			&telegramID,
+			&telegramUsername,
+			&user.Role,
+			&user.Status,
+			&user.FullName,
+			&user.OrganizationID,
+			&user.CreatedAt,
+			&user.UpdatedAt,
+			&lastLoginAt,
+			&deletedAt,
+			&user.PasswordHash,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan user: %w", err)
+		}
+
+		// Обработка nullable полей
+		if telegramID.Valid {
+			id := telegramID.Int64
+			user.TelegramID = &id
+		}
+		if telegramUsername.Valid {
+			user.TelegramUsername = &telegramUsername.String
+		}
+		if lastLoginAt.Valid {
+			user.LastLoginAt = &lastLoginAt.Time
+		}
+		if deletedAt.Valid {
+			user.DeletedAt = &deletedAt.Time
+		}
+
+		users = append(users, user)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating users: %w", err)
+	}
+
+	return users, nil
 }
 
 // метод для обновления пользователя по ID
