@@ -8,6 +8,9 @@ import (
 	"user-service/internal/converter"
 	"user-service/internal/domain"
 	"user-service/internal/server/interceptors"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // LinkTelegram - привязка Telegram аккаунта к существующему пользователю
@@ -73,17 +76,90 @@ func (s *UserServerHandler) LinkTelegram(ctx context.Context, req *pb.LinkTelegr
 
 // GetUserByTelegram - поиск пользователя по Telegram ID
 // Используется ботом для идентификации пользователя при каждом запросе
+// 🔒 API Key авторизация
 func (s *UserServerHandler) GetUserByTelegram(ctx context.Context, req *pb.GetUserByTelegramRequest) (*pb.GetUserResponse, error) {
+	// 1. Проверка контекста
 	select {
 	case <-ctx.Done():
-		log.Printf("❌ Контекст отменён: %v", ctx.Err())
+		log.Printf("❌ GetUserByTelegram: контекст отменён: %v", ctx.Err())
 		return nil, ctx.Err()
 	default:
 	}
 
-	log.Printf("📝 GetUserByTelegram вызван: telegram_id=%d", req.GetTelegramId())
+	requestID := req.GetRequestId()
+	telegramID := req.GetTelegramId()
 
-	return &pb.GetUserResponse{}, nil
+	log.Printf("📝 GetUserByTelegram: request_id=%s, telegram_id=%d", requestID, telegramID)
+
+	// 2. Валидация входных параметров
+	if telegramID == 0 {
+		log.Printf("⚠️ GetUserByTelegram [%s]: telegram_id is required", requestID)
+		return nil, status.Error(codes.InvalidArgument, "telegram_id is required")
+	}
+
+	user, err := s.UserServerService.Telegram.GetUserByTelegramID(ctx, telegramID)
+	if err != nil {
+		log.Printf("❌ GetUserByTelegram [%s]: ошибка поиска пользователя: %v", requestID, err)
+
+		switch {
+		case errors.Is(err, domain.ErrUserNotFound):
+			return &pb.GetUserResponse{
+				Success:      false,
+				User:         nil,
+				ErrorMessage: "user with this telegram id not found",
+			}, nil
+
+		case errors.Is(err, domain.ErrUserSuspended):
+			return &pb.GetUserResponse{
+				Success:      false,
+				User:         nil,
+				ErrorMessage: "user is suspended",
+			}, nil
+
+		case errors.Is(err, domain.ErrInvalidInput):
+			return &pb.GetUserResponse{
+				Success:      false,
+				User:         nil,
+				ErrorMessage: "invalid telegram id",
+			}, nil
+
+		default:
+			log.Printf("❌ GetUserByTelegram [%s]: внутренняя ошибка: %v", requestID, err)
+			return nil, status.Error(codes.Internal, "failed to get user by telegram")
+		}
+	}
+
+	// 4. Проверка soft delete
+	if user.DeletedAt != nil {
+		log.Printf("⚠️ GetUserByTelegram [%s]: пользователь %s удалён (soft delete)", requestID, user.ID)
+		return &pb.GetUserResponse{
+			Success:      false,
+			User:         nil,
+			ErrorMessage: "user is deleted",
+		}, nil
+	}
+
+	// 5. Логируем статус пользователя (не блокируем, просто для информации)
+	if !user.IsActive() {
+		log.Printf("⚠️ GetUserByTelegram [%s]: пользователь %s неактивен (status=%s), но возвращаем данные",
+			requestID, user.ID, user.Status)
+	}
+
+	// 6. Конвертация пользователя в protobuf
+	protoUser := converter.ToProtoUser(user)
+	if protoUser == nil {
+		log.Printf("❌ GetUserByTelegram [%s]: не удалось сконвертировать пользователя", requestID)
+		return nil, status.Error(codes.Internal, "failed to convert user")
+	}
+
+	log.Printf("✅ GetUserByTelegram [%s]: найден пользователь: id=%s, email=%s, role=%s, status=%s",
+		requestID, user.ID, user.Email, user.Role, user.Status)
+
+	return &pb.GetUserResponse{
+		Success:      true,
+		User:         protoUser,
+		ErrorMessage: "",
+	}, nil
 }
 
 // GetMyProfile - получение своего профиля по Telegram ID
