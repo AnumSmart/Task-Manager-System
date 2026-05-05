@@ -266,6 +266,15 @@ user-service/
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+## 🔐 JWT и авторизация
+
+```
+**Важно:** Вся работа с JWT вынесена в общую библиотеку `pkg/auth`, которая используется всеми сервисами проекта.
+- User service **генерирует** JWT токены
+- Остальные сервисы **проверяют** JWT локально через `pkg/auth`
+- User service отвечает только за **refresh токены** (Redis) и **blacklist**
+```
+
 ## gRPC API
 
 ### Сервис
@@ -313,7 +322,7 @@ service UserService {
     rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
 
     // Интеграция с сервисом задач
-    rpc ValidateUser(ValidateUserRequest) returns (ValidateUserResponse);           // Проверка пользователя для назначения
+    rpc ValidateUser(ValidateUserRequest) returns (ValidateUserResponse);          // Проверка пользователя для назначения
     rpc CheckUserExists(CheckUserExistsRequest) returns (CheckUserExistsResponse); // Быстрая проверка существования
     rpc GetUserByID(GetUserByIDRequest) returns (GetUserResponse);                 // Получение пользователя по ID
     rpc BatchGetUsers(BatchGetUsersRequest) returns (BatchGetUsersResponse);       // Массовое получение пользователей

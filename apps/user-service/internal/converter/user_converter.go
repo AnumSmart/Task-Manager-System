@@ -21,7 +21,7 @@ func ToProtoUser(domainUser *domain.User) *commonv1.User {
 		Id:        domainUser.ID,
 		Email:     domainUser.Email,
 		FullName:  domainUser.FullName,
-		Role:      toProtoRole(domainUser.Role),
+		Role:      ToProtoRole(domainUser.Role),
 		Status:    toProtoStatus(domainUser.Status),
 		CreatedAt: timestamppb.New(domainUser.CreatedAt),
 		UpdatedAt: timestamppb.New(domainUser.UpdatedAt),
@@ -66,7 +66,7 @@ func ToDomainUser(pbUser *commonv1.User) *domain.User {
 		ID:        pbUser.Id,
 		Email:     pbUser.Email,
 		FullName:  pbUser.FullName,
-		Role:      toDomainRole(pbUser.Role),
+		Role:      ToDomainRole(pbUser.Role),
 		Status:    toDomainStatus(pbUser.Status),
 		CreatedAt: pbUser.CreatedAt.AsTime(),
 		UpdatedAt: pbUser.UpdatedAt.AsTime(),
@@ -106,7 +106,7 @@ func ToProtoUserWithPermissions(targetUser, currentUser *domain.User) *commonv1.
 	// Если смотрим свои данные - показываем всё
 	if currentUser != nil && currentUser.ID == targetUser.ID {
 		pbUser.Email = targetUser.Email
-		pbUser.Role = toProtoRole(targetUser.Role)
+		pbUser.Role = ToProtoRole(targetUser.Role)
 		pbUser.Status = toProtoStatus(targetUser.Status)
 		if targetUser.TelegramID != nil {
 			pbUser.TelegramId = targetUser.TelegramID
@@ -123,7 +123,7 @@ func ToProtoUserWithPermissions(targetUser, currentUser *domain.User) *commonv1.
 	// Если текущий пользователь Owner или Manager - показываем почти всё
 	if currentUser != nil && (currentUser.Role == domain.RoleOwner || currentUser.Role == domain.RoleManager) {
 		pbUser.Email = targetUser.Email
-		pbUser.Role = toProtoRole(targetUser.Role)
+		pbUser.Role = ToProtoRole(targetUser.Role)
 		pbUser.Status = toProtoStatus(targetUser.Status)
 		// Но скрываем Telegram данные для чужих пользователей (конфиденциальность)
 		// TelegramId и TelegramUsername не копируем
@@ -146,7 +146,7 @@ func ToDomainUserFromCreateRequest(req *userv1.CreateUserRequest, organizationID
 	user := &domain.User{
 		Email:          req.GetEmail(),
 		FullName:       req.GetFullName(),
-		Role:           toDomainRole(req.GetRole()),
+		Role:           ToDomainRole(req.GetRole()),
 		Status:         domain.UserStatusActive, // Новые пользователи активны по умолчанию
 		OrganizationID: organizationID,          // ← приходит из JWT
 		CreatedAt:      time.Now(),
@@ -173,7 +173,7 @@ func ToDomainUserUpdates(req *userv1.UpdateUserRequest) map[string]interface{} {
 	}
 
 	if req.Role != nil {
-		updates["role"] = toDomainRole(req.GetRole())
+		updates["role"] = ToDomainRole(req.GetRole())
 	}
 
 	if req.Status != nil {
@@ -185,22 +185,62 @@ func ToDomainUserUpdates(req *userv1.UpdateUserRequest) map[string]interface{} {
 
 // ========== Конвертация для BatchGetUsersResponse ==========
 
-// ToProtoUserMap конвертирует map domain пользователей в map protobuf
+// ToProtoUserMap конвертирует map доменных пользователей в map protobuf пользователей
 func ToProtoUserMap(domainUsers map[string]*domain.User) map[string]*commonv1.User {
 	if domainUsers == nil {
 		return make(map[string]*commonv1.User)
 	}
 
-	pbUsers := make(map[string]*commonv1.User)
+	pbUsers := make(map[string]*commonv1.User, len(domainUsers))
 	for id, user := range domainUsers {
 		pbUsers[id] = ToProtoUser(user)
 	}
 	return pbUsers
 }
 
+// ToDomainUserMap конвертирует map protobuf пользователей в map доменных пользователей
+// (если понадобится обратная конвертация)
+func ToDomainUserMap(pbUsers map[string]*commonv1.User) map[string]*domain.User {
+	if pbUsers == nil {
+		return make(map[string]*domain.User)
+	}
+
+	domainUsers := make(map[string]*domain.User, len(pbUsers))
+	for id, pbUser := range pbUsers {
+		domainUsers[id] = ToDomainUser(pbUser)
+	}
+	return domainUsers
+}
+
+// ToProtoUserSlice конвертирует slice доменных пользователей в slice protobuf
+func ToProtoUserSlice(domainUsers []*domain.User) []*commonv1.User {
+	if domainUsers == nil {
+		return []*commonv1.User{}
+	}
+
+	pbUsers := make([]*commonv1.User, len(domainUsers))
+	for i, user := range domainUsers {
+		pbUsers[i] = ToProtoUser(user)
+	}
+	return pbUsers
+}
+
+// ToDomainUserSlice конвертирует slice protobuf пользователей в slice доменных
+func ToDomainUserSlice(pbUsers []*commonv1.User) []*domain.User {
+	if pbUsers == nil {
+		return []*domain.User{}
+	}
+
+	domainUsers := make([]*domain.User, len(pbUsers))
+	for i, pbUser := range pbUsers {
+		domainUsers[i] = ToDomainUser(pbUser)
+	}
+	return domainUsers
+}
+
 // ========== Конвертация enum (common.v1.Role ↔ domain.Role) ==========
 
-func toProtoRole(role domain.Role) commonv1.Role {
+func ToProtoRole(role domain.Role) commonv1.Role {
 	switch role {
 	case domain.RoleOwner:
 		return commonv1.Role_ROLE_OWNER
@@ -213,7 +253,7 @@ func toProtoRole(role domain.Role) commonv1.Role {
 	}
 }
 
-func toDomainRole(role commonv1.Role) domain.Role {
+func ToDomainRole(role commonv1.Role) domain.Role {
 	switch role {
 	case commonv1.Role_ROLE_OWNER:
 		return domain.RoleOwner
@@ -231,7 +271,7 @@ func ToDomainRoleFilter(role *commonv1.Role) *domain.Role {
 	if role == nil {
 		return nil
 	}
-	converted := toDomainRole(*role)
+	converted := ToDomainRole(*role)
 	return &converted
 }
 

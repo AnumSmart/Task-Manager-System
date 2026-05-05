@@ -584,35 +584,78 @@ func (s *UserServiceLayer) GetUsersByRole(ctx context.Context, organizationID st
 	return filtered, nil
 }
 
-// BulkGetUsers - массовое получение пользователей (с кэшированием)
-func (s *UserServiceLayer) BulkGetUsers(ctx context.Context, userIDs []string) ([]*domain.User, error) {
-	log.Printf("📝 Bulk getting users: %d IDs", len(userIDs))
+// BatchGetUsersByIDs - массовое получение пользователей по списку ID
+// Возвращает map "ID → User" и список ID, которые не найдены (с использованием кэша)
+func (s *UserServiceLayer) BatchGetUsersByIDs(ctx context.Context, userIDs []string) (map[string]*domain.User, []string, error) {
+	// 1. Проверка входных данных
+	if len(userIDs) == 0 {
+		log.Printf("[WARN] BatchGetUsersByIDs: empty user IDs list")
+		return make(map[string]*domain.User), []string{}, nil
+	}
 
-	var users []*domain.User
-	var missingIDs []string
-
-	// 1. Пытаемся получить из кэша
+	// 2. Фильтрация пустых ID
+	validIDs := make([]string, 0, len(userIDs))
 	for _, id := range userIDs {
+		if id != "" {
+			validIDs = append(validIDs, id)
+		}
+	}
+
+	if len(validIDs) == 0 {
+		log.Printf("[WARN] BatchGetUsersByIDs: no valid IDs after filtering")
+		return make(map[string]*domain.User), userIDs, nil
+	}
+
+	usersMap := make(map[string]*domain.User) // инициализируем мапу для результата
+	notFoundIDs := make([]string, 0)          // инициализируем слайс для результата (ID, которые не найдены)
+	missingFromCache := make([]string, 0)     // инициализируем слайс для необработанных ID по причине ошибок в кэшэ (чтобы получить их из базы)
+
+	// 3. Сначала пробуем получить из кэша
+	for _, id := range validIDs {
 		user, err := s.getCachedUser(ctx, id)
 		if err == nil {
-			users = append(users, user)
+			usersMap[id] = user
+			log.Printf("📦 BatchGetUsersByIDs: user %s retrieved from cache", id)
 		} else {
-			missingIDs = append(missingIDs, id)
+			missingFromCache = append(missingFromCache, id)
 		}
 	}
 
-	// 2. Получаем недостающих из БД
-	if len(missingIDs) > 0 {
-		// TODO: Добавить метод GetByIDs в репозиторий
-		for _, id := range missingIDs {
-			user, err := s.UserRepo.GetByID(ctx, id)
-			if err == nil {
-				users = append(users, user)
-				s.cacheUser(ctx, user) // Сохраняем в кэш
+	// 4. Если все пользователи найдены в кэше
+	if len(missingFromCache) == 0 {
+		log.Printf("✅ BatchGetUsersByIDs: all %d users found in cache", len(usersMap))
+		return usersMap, []string{}, nil
+	}
+
+	// 5. Получаем недостающих пользователей из БД
+	dbUsers, err := s.UserRepo.BatchGetByIDs(ctx, missingFromCache)
+	if err != nil {
+		log.Printf("❌ BatchGetUsersByIDs: ошибка БД: %v", err)
+		return nil, nil, fmt.Errorf("database error: %w", err)
+	}
+
+	// 6. Сохраняем полученных из БД пользователей в кэш и в map
+	foundInDB := make(map[string]bool)
+	for _, user := range dbUsers {
+		usersMap[user.ID] = user
+		foundInDB[user.ID] = true
+
+		// Сохраняем в кэш асинхронно (чтобы не блокировать ответ)
+		go func(u *domain.User) {
+			if err := s.cacheUser(context.Background(), u); err != nil {
+				log.Printf("⚠️ Failed to cache user %s: %v", u.ID, err)
 			}
+		}(user)
+	}
+	// 7. Определяем, какие ID не найдены (ни в кэше, ни в БД)
+	for _, id := range missingFromCache {
+		if !foundInDB[id] {
+			notFoundIDs = append(notFoundIDs, id)
 		}
 	}
 
-	log.Printf("✅ Bulk get completed: retrieved %d users", len(users))
-	return users, nil
+	log.Printf("✅ BatchGetUsersByIDs: total=%d, from_cache=%d, from_db=%d, not_found=%d",
+		len(userIDs), len(usersMap)-len(dbUsers), len(dbUsers), len(notFoundIDs))
+
+	return usersMap, notFoundIDs, nil
 }
