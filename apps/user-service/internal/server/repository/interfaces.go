@@ -37,6 +37,13 @@ type OrganizationDBRepository interface {
 	Activate(ctx context.Context, orgID string) error                                    // Activate - устанавливает is_active = true
 }
 
+// Интерфейс ТОЛЬКО для сервисного слоя, для логики аналитики
+type AnalyticsDBRepository interface {
+	GetAllUsers(ctx context.Context, includeInactive bool, limit, offset int) ([]*domain.User, int, error)
+	GetUsersByRole(ctx context.Context, role domain.Role, includeInactive bool) ([]*domain.User, error)
+	GetUserRole(ctx context.Context, userID string) (domain.Role, error)
+}
+
 // Интерфейс ТОЛЬКО для сервисного слоя (для тестов), для логики HealthCheckDB
 type HealthCheckDBRepo interface {
 	PingDB(ctx context.Context) error
