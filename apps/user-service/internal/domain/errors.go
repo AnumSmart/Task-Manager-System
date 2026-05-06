@@ -41,3 +41,8 @@ var (
 	ErrReqOrganizationIDRequired = errors.New("organization ID could not be empty")            // строка ID организации не должна быть пустой
 	ErrReqPasswordTooShort       = errors.New("password string is too short")                  // строка пароля - очень короткая
 )
+
+// Общие доменные ошибки
+func ErrInvalidInputMess(m string) error {
+	return errors.New(m)
+}
