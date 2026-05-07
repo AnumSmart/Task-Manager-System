@@ -15,6 +15,7 @@ type UserServiceConfig struct {
 	RedisConf          *configs.RedisConfig      // конфиг для экземпляра REDIS (cache) (загружается в шаблон из pkg, данные берутся из .env файла)
 	RedisBlackListConf *configs.RedisConfig      // конфиг для экземпляра REDIS (blacklist) (загружается в шаблон из pkg, данные берутся из .env файла)
 	JWTConfig          *configs.JWTConfig        // конфиг для работы с JWT
+	RabbitConfig       *configs.RabbitMQConfig   // конфиг для брокера сообщений RabbitMQ
 }
 
 // путь к .env файлу
@@ -80,11 +81,26 @@ func LoadConfig() (*UserServiceConfig, error) {
 		return nil, fmt.Errorf("Invalid JWT config: %s\n", err.Error())
 	}
 
+	// загружаем конфиг для RabbitMQ
+	rabbitMQConfig, err := configs.LoadYAMLConfig[configs.RabbitMQConfig](os.Getenv("RABBITMQ_CONFIG_ADDRESS_STRING"), configs.NewRabbitMQConfig)
+	if err != nil {
+		return nil, fmt.Errorf("Error during loading config: %s\n", err.Error())
+	}
+
+	// Переопределяем URL и добавляем суффикс окружения из .env
+	rabbitMQConfig.MergeWithEnv()
+
+	// Валидируем конфиг
+	if err := rabbitMQConfig.Validate(); err != nil {
+		return nil, fmt.Errorf("Invalid RabbitMQ config: %s\n", err.Error())
+	}
+
 	return &UserServiceConfig{
 		GRPCServerConfig:   grpcServerConfig,
 		PostgresDBConfig:   postgresDBConfig,
 		RedisConf:          redisConfig,
 		RedisBlackListConf: blacklistConfig,
 		JWTConfig:          jwtConfig,
+		RabbitConfig:       rabbitMQConfig,
 	}, nil
 }
