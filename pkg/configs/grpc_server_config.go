@@ -16,6 +16,9 @@ type GRPCServerConfig struct {
 	KeepaliveTimeout      time.Duration `yaml:"keepalive_timeout"`        // Ждем ответ 20 секунд, если не отвечает - считаем отключившимся
 	MaxRecvMsgSize        int           `yaml:"max_recv_msg_size"`        // Максимальный размер принимаемого сообщения - 10 МБ
 	MaxSendMsgSize        int           `yaml:"max_send_msg_size"`        // Максимальный размер отправляемого сообщения - тоже 10 МБ
+
+	// API Keys для межсервисной авторизации
+	AllowedServices map[string]string `yaml:"allowed_services"` // service_name -> api_key
 }
 
 // метод получения адреса
@@ -35,5 +38,6 @@ func UseDefaultGRPCServerConfig() *GRPCServerConfig {
 		KeepaliveTimeout:      20 * time.Second,
 		MaxRecvMsgSize:        10485760,
 		MaxSendMsgSize:        10485760,
+		AllowedServices:       map[string]string{"default": "default"}, // дэфолтный список сервисов с ключами
 	}
 }
