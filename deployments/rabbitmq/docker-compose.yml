@@ -1,0 +1,30 @@
+services:
+  rabbitmq:
+    image: rabbitmq:${RABBITMQ_VERSION:-3.13}-management
+    container_name: taskms-rabbitmq
+    restart: unless-stopped
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-guest}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD:-guest}
+      - RABBITMQ_ERLANG_COOKIE=${RABBITMQ_COOKIE:-secret_cookie}
+    ports:
+      - '${RABBITMQ_PORT:-5672}:5672' # AMQP протокол
+      - '${RABBITMQ_MGMT_PORT:-15672}:15672' # Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - rabbitmq-network
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  rabbitmq_data:
+    name: taskms-rabbitmq-data
+
+networks:
+  rabbitmq-network:
+    driver: bridge
+    name: rabbitmq-network
