@@ -7,6 +7,7 @@ import (
 	"log"
 	"pkg/auth"
 	"pkg/auth/jwt"
+	"pkg/rabbitmq"
 	"time"
 	"user-service/internal/domain"
 	"user-service/internal/server/repository"
@@ -17,15 +18,17 @@ type TelegramLayer struct {
 	TeleRepo repository.UserDBRepository
 	Cache    repository.UserCacheRepository
 	Auth     auth.AuthInterface
+	broker   rabbitmq.BrokerInterface
 }
 
 // констркутор для части сервисного слоя (телеграмм)
 // в конструктор передаём составной репозиторий (на будущее)
-func NewTelegramLayer(repo *repository.UserServiceRepository, auth auth.AuthInterface) *TelegramLayer {
+func NewTelegramLayer(repo *repository.UserServiceRepository, auth auth.AuthInterface, broker rabbitmq.BrokerInterface) *TelegramLayer {
 	return &TelegramLayer{
 		TeleRepo: repo.DBRepo,
 		Cache:    repo.CacheRepo,
 		Auth:     auth,
+		broker:   broker,
 	}
 }
 

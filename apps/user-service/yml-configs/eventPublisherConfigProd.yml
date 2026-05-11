@@ -1,0 +1,7 @@
+# Production
+worker_count: 10
+queue_size: 5000
+retry_count: 5
+retry_backoff_ms: 100
+publish_timeout_sec: 10
+enable_dlq: true

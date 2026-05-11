@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"pkg/auth"
+	"pkg/rabbitmq"
 	"user-service/internal/domain"
 	"user-service/internal/server/repository"
 
@@ -17,14 +18,16 @@ type UserServiceLayer struct {
 	UserRepo    repository.UserDBRepository    // использую интерфейс из repo слоя
 	Cache       repository.UserCacheRepository // использую интерфейс из repo слоя
 	authService auth.AuthInterface             // логика авторизации из пакета pkg/auth
+	broker      rabbitmq.BrokerInterface       // интерфейс для работы с брокером сообщений
 }
 
 // NewUserLayer - конструктор для части сервисного слоя (пользователи)
-func NewUserLayer(repo *repository.UserServiceRepository, authService auth.AuthInterface) *UserServiceLayer {
+func NewUserLayer(repo *repository.UserServiceRepository, authService auth.AuthInterface, broker rabbitmq.BrokerInterface) *UserServiceLayer {
 	return &UserServiceLayer{
 		UserRepo:    repo.DBRepo,
 		Cache:       repo.CacheRepo,
 		authService: authService,
+		broker:      broker,
 	}
 }
 
