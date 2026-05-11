@@ -1,0 +1,7 @@
+# Разработка
+worker_count: 1
+queue_size: 100
+retry_count: 2
+retry_backoff_ms: 50
+publish_timeout_sec: 2
+enable_dlq: false
