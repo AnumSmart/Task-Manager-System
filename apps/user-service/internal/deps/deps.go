@@ -8,6 +8,7 @@ import (
 	"log"
 	"pkg/auth"
 	postgresdb "pkg/db"
+	"pkg/rabbitmq"
 	"pkg/redis"
 	"sync"
 	"user-service/internal/config"
@@ -26,6 +27,7 @@ type Container struct {
 	pgPool         global_db.Pool     // pgPool - пул соединений с PostgreSQL (интерфейс)
 	redisCache     global_cache.Cache // redisCache - клиент для работы с Redis (интерфейс)
 	redisBlackList global_cache.Cache // клиент для работы с Redis (интерфейс) - черный список для JWT
+	brokerClient   *rabbitmq.Broker   // клиент для работы с RabbitMQ
 
 	// ==================== AUTH LAYER ====================
 	authService auth.AuthInterface // НОВЫЙ: сервис авторизации (JWT)
@@ -186,6 +188,25 @@ func (c *Container) initResources(ctx context.Context) error {
 		log.Println("Redis BlackList connection closed")
 		return nil
 	})
+
+	// RabbitMQ client
+	brokerClient, err := rabbitmq.New(c.config.RabbitConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create rabbitMQ client: %w", err)
+	}
+
+	// если rabbitMQ клиент успешно создан, инициализируем его в структуре контейнера
+	c.brokerClient = brokerClient
+
+	// регистрируем функцию освобождения ресурсов
+	c.addCloser(func() error {
+		if err := c.brokerClient.Close(); err != nil {
+			return fmt.Errorf("rabbitMQ close: %w", err)
+		}
+		log.Println("RabbitMQ connection closed")
+		return nil
+	})
+
 	return nil
 }
 
@@ -256,7 +277,7 @@ func (c *Container) initRepositories() error {
 // initServices инициализирует сервисы с внедрением auth
 func (c *Container) initServices() error {
 	// Передаем auth сервис в UserService
-	userService := service.NewUserService(c.repo, c.authService)
+	userService := service.NewUserService(c.repo, c.authService, c.brokerClient)
 	if userService == nil {
 		return fmt.Errorf("failed to create user service")
 	}
@@ -333,5 +354,14 @@ func (c *Container) HealthCheck(ctx context.Context) error {
 			return err
 		}
 	}
+
+	// Проверка RabbitMQ клиента
+	// проверяем, что указатель не nil
+	if c.brokerClient != nil {
+		if err := c.brokerClient.HealthCheck(); err != nil {
+			return fmt.Errorf("rabbitMQ health check failed: %w", err)
+		}
+	}
+
 	return nil
 }
