@@ -35,6 +35,8 @@ user-service/
 │ │ ├── user.go                               # структура User
 │ │ ├── common.go                             # общие удобные функции
 │ │ └── errors.go                             # domain errors
+│ ├── events/                                 # пакер работы с событиями
+│ │ └── events.go                             # модели событий для user-service
 │ ├── server/
 │ │ ├── interceptors/                         # Интерсепторы
 │ │ |     ├── api_key_auth.go                 # Интерсептор для внутренней межсервисной авторизации (api key)
@@ -69,7 +71,10 @@ user-service/
 │ └── config/
 │         └── config.go                       # Описание струкктуры конфига сервиса
 ├── yml-configs/
-│    └── grpcServerConfig.yml                 # Конфиг GRPC сервера
+│    ├── grpcServerConfig.yml                 # Конфиг GRPC сервера
+│    ├── rabbitMQConfig.yml                   # Конфиг брокера RabbitMQ
+│    ├── eventPublisherConfigDev.yml          # Конфиг для event publisher (dev)
+│    └── eventPublisherConfigProd.yml         # Конфиг для event publisher (prod)
 ├── Dockerfile
 ├── go.mod
 ├── go.sum
