@@ -104,7 +104,7 @@ func NewEventPublisher(broker rabbitmq.BrokerInterface, config *configs.EventPub
 //
 // Важно: ошибка публикации в RabbitMQ НЕ возвращается здесь,
 // она логируется внутри worker'а и учитывается в метриках.
-func (p *EventPublisher) PublishAsync(event *BaseEvent) error {
+func (p *EventPublisher) PublishAsync(event Event) error {
 	// Увеличиваем счётчик отправленных событий
 	p.submitted.Add(1)
 
@@ -117,7 +117,7 @@ func (p *EventPublisher) PublishAsync(event *BaseEvent) error {
 	default:
 		// Канал заполнен - применяем backpressure
 		p.dropped.Add(1)
-		log.Printf("[EventPublisher] ⚠️ Queue full, event dropped: %s", event.EventType)
+		log.Printf("[EventPublisher] ⚠️ Queue full, event dropped: %s", event.GetEventType())
 		return ErrQueueFull
 	}
 }
@@ -127,7 +127,7 @@ func (p *EventPublisher) PublishAsync(event *BaseEvent) error {
 //
 // Используйте для КРИТИЧЕСКИ ВАЖНЫХ событий, где потеря недопустима.
 // Для большинства случаев используйте PublishAsync (быстрее, не блокирует).
-func (p *EventPublisher) PublishSync(ctx context.Context, event *BaseEvent) error {
+func (p *EventPublisher) PublishSync(ctx context.Context, event Event) error {
 	p.submitted.Add(1)
 	return p.publishWithRetry(ctx, event)
 }

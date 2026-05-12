@@ -10,12 +10,14 @@ import (
 
 // Конфигурация сервиса пользователей
 type UserServiceConfig struct {
-	GRPCServerConfig   *configs.GRPCServerConfig // конфиг для grpc сервера (загружается в шаблон из pkg, данные берутся из .yml файла)
-	PostgresDBConfig   *configs.PostgresDBConfig // конфиг для экземпляра POSTGRES (загружается в шаблон из pkg, данные берутся из .env файла)
-	RedisConf          *configs.RedisConfig      // конфиг для экземпляра REDIS (cache) (загружается в шаблон из pkg, данные берутся из .env файла)
-	RedisBlackListConf *configs.RedisConfig      // конфиг для экземпляра REDIS (blacklist) (загружается в шаблон из pkg, данные берутся из .env файла)
-	JWTConfig          *configs.JWTConfig        // конфиг для работы с JWT
-	RabbitConfig       *configs.RabbitMQConfig   // конфиг для брокера сообщений RabbitMQ
+	GRPCServerConfig   *configs.GRPCServerConfig     // конфиг для grpc сервера (загружается в шаблон из pkg, данные берутся из .yml файла)
+	PostgresDBConfig   *configs.PostgresDBConfig     // конфиг для экземпляра POSTGRES (загружается в шаблон из pkg, данные берутся из .env файла)
+	RedisConf          *configs.RedisConfig          // конфиг для экземпляра REDIS (cache) (загружается в шаблон из pkg, данные берутся из .env файла)
+	RedisBlackListConf *configs.RedisConfig          // конфиг для экземпляра REDIS (blacklist) (загружается в шаблон из pkg, данные берутся из .env файла)
+	JWTConfig          *configs.JWTConfig            // конфиг для работы с JWT
+	RabbitConfig       *configs.RabbitMQConfig       // конфиг для брокера сообщений RabbitMQ
+	EPConfig           *configs.EventPublisherConfig // конфиг для публикатора событий
+	OutboxRelayConfig  *configs.OutboxRelayConfig    // конфиг для Outbox Relay
 }
 
 // путь к .env файлу
@@ -95,6 +97,27 @@ func LoadConfig() (*UserServiceConfig, error) {
 		return nil, fmt.Errorf("Invalid RabbitMQ config: %s\n", err.Error())
 	}
 
+	// загружаем конфиг для EventPublisher
+	eventPublisherConfig, err := configs.LoadYAMLConfig[configs.EventPublisherConfig](os.Getenv("EVENT_PUBLISHER_CONFIG_ADDRESS_STRING"), configs.DefaultEventPublisherConfig)
+	if err != nil {
+		return nil, fmt.Errorf("Error during loading config: %s\n", err.Error())
+	}
+	err = eventPublisherConfig.Validate()
+	if err != nil {
+		return nil, fmt.Errorf("Event Pulisher Config is not Valid: %s\n", err.Error())
+	}
+
+	// загружаем конфиг для Relay Outbox
+	outboxRelayConfig, err := configs.LoadYAMLConfig[configs.OutboxRelayConfig](os.Getenv("EVENT_PUBLISHER_CONFIG_ADDRESS_STRING"), configs.DefaultRelayConfig)
+	if err != nil {
+		return nil, fmt.Errorf("Error during loading config: %s\n", err.Error())
+	}
+
+	err = outboxRelayConfig.Validate()
+	if err != nil {
+		return nil, fmt.Errorf("Relay Outbox Config is not Valid: %s\n", err.Error())
+	}
+
 	return &UserServiceConfig{
 		GRPCServerConfig:   grpcServerConfig,
 		PostgresDBConfig:   postgresDBConfig,
@@ -102,5 +125,7 @@ func LoadConfig() (*UserServiceConfig, error) {
 		RedisBlackListConf: blacklistConfig,
 		JWTConfig:          jwtConfig,
 		RabbitConfig:       rabbitMQConfig,
+		EPConfig:           eventPublisherConfig,
+		OutboxRelayConfig:  outboxRelayConfig,
 	}, nil
 }

@@ -8,9 +8,11 @@ import (
 	"log"
 	"pkg/auth"
 	postgresdb "pkg/db"
+	"pkg/events"
 	"pkg/rabbitmq"
 	"pkg/redis"
 	"sync"
+	"time"
 	"user-service/internal/config"
 	"user-service/internal/server"
 	"user-service/internal/server/handler"
@@ -38,7 +40,8 @@ type Container struct {
 	repo      *repository.UserServiceRepository      // repo - КОМПОЗИТНЫЙ репозиторий (основной для сервисов)
 
 	// ==================== СЕРВИСЫ (БИЗНЕС-ЛОГИКА) ====================
-	userService *service.UserService // userService - сервис пользователей
+	userService    *service.UserService   // userService - сервис пользователей
+	eventPublisher *events.EventPublisher // публикатор событий, которые будут отправлены в брокер
 
 	// ==================== ХЕНДЛЕРЫ (GRPC) ====================
 	userHandler *handler.UserServerHandler // userHandler - gRPC хендлер для работы с пользователями
@@ -284,6 +287,26 @@ func (c *Container) initServices() error {
 
 	c.userService = userService
 	log.Println("✓ User service initialized with auth")
+
+	// создаём публикатора событий
+	eventPublisher := events.NewEventPublisher(c.brokerClient, c.config.EPConfig)
+	if eventPublisher == nil {
+		return fmt.Errorf("failed to create event publisher")
+	}
+
+	c.eventPublisher = eventPublisher
+	log.Println("✓ Event Publisher was initialized")
+
+	eventPubContext, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	c.addCloser(func() error {
+		if err := c.eventPublisher.Shutdown(eventPubContext); err != nil {
+			return fmt.Errorf("event publisher close: %w", err)
+		}
+		log.Println("Event Publisher shuted down")
+		return nil
+	})
 
 	return nil
 }
