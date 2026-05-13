@@ -33,6 +33,7 @@ func (r *EventRegistry) UnmarshalPayload(eventType string, data []byte) (events.
 		return nil, fmt.Errorf("unknown event type: %s", eventType)
 	}
 
+	//вызываем фабрику, которая создаёт событие нужного типа и в неё помещаем данный после анмаршалинга
 	event := factory()
 	if err := json.Unmarshal(data, event); err != nil {
 		return nil, fmt.Errorf("unmarshal event: %w", err)
