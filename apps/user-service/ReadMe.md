@@ -29,7 +29,8 @@ user-service/
 │ │ ├── user_converter.go                     # конвертер для пользователей
 │ │ └── org_converter.go                      # конвертер для организации
 │ ├── deps/                                   # работа с зависимостями
-│ │ └── deps.go                               # описание DI контейнера
+│ │ ├── di.go                                 # описание DI контейнера
+│ │ └── di_methods.go                         # методы DI контейнера
 │ ├── domain/                                 # бизнес-сущности
 │ │ ├── organization.go                       # структура Organization
 │ │ ├── user.go                               # структура User
