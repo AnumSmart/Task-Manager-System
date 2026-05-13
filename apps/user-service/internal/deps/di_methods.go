@@ -3,111 +3,20 @@ package deps
 import (
 	"context"
 	"fmt"
-	"global_models/global_cache"
-	"global_models/global_db"
 	"log"
 	"pkg/auth"
 	postgresdb "pkg/db"
-	"pkg/events"
+	ev "pkg/events"
+	"pkg/outbox"
 	"pkg/rabbitmq"
 	"pkg/redis"
-	"sync"
 	"time"
-	"user-service/internal/config"
+	"user-service/internal/events"
 	"user-service/internal/server"
 	"user-service/internal/server/handler"
 	"user-service/internal/server/repository"
 	"user-service/internal/server/service"
 )
-
-// Container - DI контейнер (приватная структура)
-type Container struct {
-	// ==================== КОНФИГУРАЦИЯ ====================
-	config *config.UserServiceConfig // config - конфигурация сервиса
-
-	// ==================== РЕСУРСЫ (Closeable) ====================
-	pgPool         global_db.Pool     // pgPool - пул соединений с PostgreSQL (интерфейс)
-	redisCache     global_cache.Cache // redisCache - клиент для работы с Redis (интерфейс)
-	redisBlackList global_cache.Cache // клиент для работы с Redis (интерфейс) - черный список для JWT
-	brokerClient   *rabbitmq.Broker   // клиент для работы с RabbitMQ
-
-	// ==================== AUTH LAYER ====================
-	authService auth.AuthInterface // НОВЫЙ: сервис авторизации (JWT)
-
-	// ==================== РЕПОЗИТОРИИ (СЛОИ ДОСТУПА К ДАННЫМ) ====================
-	dbRepo    *repository.UserServiceDBRepository    // dbRepo - репозиторий для работы с базой данных (PostgreSQL)
-	cacheRepo *repository.UserServiceCacheRepository // cacheRepo - репозиторий для работы с кэшем (Redis)
-	repo      *repository.UserServiceRepository      // repo - КОМПОЗИТНЫЙ репозиторий (основной для сервисов)
-
-	// ==================== СЕРВИСЫ (БИЗНЕС-ЛОГИКА) ====================
-	userService    *service.UserService   // userService - сервис пользователей
-	eventPublisher *events.EventPublisher // публикатор событий, которые будут отправлены в брокер
-
-	// ==================== ХЕНДЛЕРЫ (GRPC) ====================
-	userHandler *handler.UserServerHandler // userHandler - gRPC хендлер для работы с пользователями
-
-	// ==================== Сервер (GRPC) ====================
-	grpcServer *server.GRPCUserServer // grpc сервер
-
-	// ==================== УПРАВЛЕНИЕ РЕСУРСАМИ ====================
-	closers   []func() error // closers - список функций для закрытия ресурсов. Каждый closer вызывается только один раз
-	closeOnce sync.Once      // closeOnce - гарантирует однократное закрытие ресурсов
-	closeErr  error          // closeErr - ошибка, возникшая при закрытии ресурсов
-}
-
-// NewContainer создает контейнер
-func NewContainer(ctx context.Context, cfg *config.UserServiceConfig) (*Container, error) {
-	// пытаемся отловить панику
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Printf("panic inside DI container constructor: %v\n", r)
-		}
-	}()
-
-	// создаём начальный экземпляр контейнера, чтобы для его наполнения вызывать инициализацию зависимостей
-	c := &Container{
-		config:  cfg,
-		closers: make([]func() error, 0),
-	}
-
-	// 1. Инициализация ресурсов
-	if err := c.initResources(ctx); err != nil {
-		return nil, fmt.Errorf("init resources: %w", err)
-	}
-
-	// 2. Инициализация Auth сервиса
-	if err := c.initAuthService(); err != nil {
-		c.Close()
-		return nil, fmt.Errorf("init auth service: %w", err)
-	}
-
-	// 3. Инициализация репозиториев
-	if err := c.initRepositories(); err != nil {
-		c.Close()
-		return nil, fmt.Errorf("init repositories: %w", err)
-	}
-
-	// 4. Инициализация сервисов
-	if err := c.initServices(); err != nil {
-		c.Close()
-		return nil, fmt.Errorf("init services: %w", err)
-	}
-
-	// 5. Инициализация хендлеров
-	if err := c.initHandlers(); err != nil {
-		c.Close()
-		return nil, fmt.Errorf("init handlers: %w", err)
-	}
-
-	// 6. Инициализация gRPC сервера
-	if err := c.initGRPCServer(); err != nil {
-		c.Close()
-		return nil, fmt.Errorf("init grpc server: %w", err)
-	}
-
-	log.Println("DI container initialized successfully")
-	return c, nil
-}
 
 // Управление ресурсами (добавляем функцию закрытия в слайс)
 func (c *Container) addCloser(closer func() error) {
@@ -246,7 +155,7 @@ func (c *Container) initAuthService() error {
 // внутренний метод инициализации репозитория
 func (c *Container) initRepositories() error {
 	// репозиторий для работы с postgres
-	pgRepo, err := repository.NewUserServiceDBRepository(c.pgPool)
+	pgRepo, err := repository.NewUserServiceDBRepository(c.pgPool, c.outboxRepo)
 	// проверка на ошибку или на nil репозиторий
 	if err != nil || pgRepo == nil {
 		return fmt.Errorf("failed to create db repository")
@@ -277,36 +186,16 @@ func (c *Container) initRepositories() error {
 	return nil
 }
 
-// initServices инициализирует сервисы с внедрением auth
+// initServices инициализирует сервисы
 func (c *Container) initServices() error {
 	// Передаем auth сервис в UserService
-	userService := service.NewUserService(c.repo, c.authService, c.brokerClient)
+	userService := service.NewUserService(c.repo, c.authService)
 	if userService == nil {
 		return fmt.Errorf("failed to create user service")
 	}
 
 	c.userService = userService
 	log.Println("✓ User service initialized with auth")
-
-	// создаём публикатора событий
-	eventPublisher := events.NewEventPublisher(c.brokerClient, c.config.EPConfig)
-	if eventPublisher == nil {
-		return fmt.Errorf("failed to create event publisher")
-	}
-
-	c.eventPublisher = eventPublisher
-	log.Println("✓ Event Publisher was initialized")
-
-	eventPubContext, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-
-	c.addCloser(func() error {
-		if err := c.eventPublisher.Shutdown(eventPubContext); err != nil {
-			return fmt.Errorf("event publisher close: %w", err)
-		}
-		log.Println("Event Publisher shuted down")
-		return nil
-	})
 
 	return nil
 }
@@ -320,6 +209,60 @@ func (c *Container) initHandlers() error {
 
 	// если все успешно - инициализируем зависимость в контейнере
 	c.userHandler = userHandler
+
+	return nil
+}
+
+// Инициализация outbox (регистрация событий)
+func (c *Container) initOutbox() error {
+	// Создаём реестр событий
+	c.outboxRegistry = outbox.NewEventRegistry()
+
+	// Регисрируем события для user-service
+	c.outboxRegistry.Register("user.created", func() ev.Event { return &events.UserCreatedEvent{} })
+	c.outboxRegistry.Register("user.telegram_linked", func() ev.Event { return &events.TelegramLinkedEvent{} })
+
+	// Создаём outbox репозиторий
+	c.outboxRepo = outbox.NewPostgresOutboxRepository()
+
+	return nil
+}
+
+// Инициализация EventPublisher
+func (c *Container) initEventPublisher() error {
+	c.eventPublisher = ev.NewEventPublisher(c.brokerClient, c.config.EPConfig)
+
+	c.addCloser(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		return c.eventPublisher.Shutdown(ctx)
+	})
+
+	return nil
+}
+
+// Запуск Outbox Relay
+func (c *Container) startOutboxRelay(ctx context.Context) error {
+	// проверка конфига на nil
+	if c.config.OutboxRelayConfig == nil {
+		log.Println("⚠️ Outbox relay not configured, skipping")
+		return fmt.Errorf("Outbox config must not be nil")
+	}
+
+	c.outboxRelay = outbox.NewRelay(c.outboxRepo, c.pgPool, c.eventPublisher, c.outboxRegistry, c.config.OutboxRelayConfig)
+
+	// Запускаем в горутине
+	go func() {
+		log.Println("🚀 Starting Outbox Relay...")
+		c.outboxRelay.Start(ctx)
+		log.Println("🛑 Outbox Relay stopped")
+	}()
+
+	c.addCloser(func() error {
+		log.Println("  → Stopping Outbox Relay...")
+		c.outboxRelay.Stop()
+		return nil
+	})
 
 	return nil
 }

@@ -2,7 +2,6 @@ package service
 
 import (
 	"pkg/auth"
-	"pkg/rabbitmq"
 	"user-service/internal/server/repository"
 )
 
@@ -17,13 +16,13 @@ type UserService struct {
 }
 
 // конструктор для сервиного слоя (в качестве параметра передаём составной репозиторий)
-func NewUserService(repo *repository.UserServiceRepository, auth auth.AuthInterface, broker *rabbitmq.Broker) *UserService {
+func NewUserService(repo *repository.UserServiceRepository, auth auth.AuthInterface) *UserService {
 	return &UserService{
-		User:         NewUserLayer(repo, auth, broker),
+		User:         NewUserLayer(repo, auth),
 		Organization: NewOrganisationLayer(repo),
 		Analytics:    NewAnalyticsLayer(repo),
 		Task:         NewTaskLayer(repo),
-		Telegram:     NewTelegramLayer(repo, auth, broker),
+		Telegram:     NewTelegramLayer(repo, auth),
 		HealthCheck:  NewHealthCheck(repo, auth),
 	}
 }
