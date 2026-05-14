@@ -189,7 +189,7 @@ func (c *Container) initRepositories() error {
 // initServices инициализирует сервисы
 func (c *Container) initServices() error {
 	// Передаем auth сервис в UserService
-	userService := service.NewUserService(c.repo, c.authService)
+	userService := service.NewUserService(c.repo, c.authService, c.pgPool, c.outboxRepo)
 	if userService == nil {
 		return fmt.Errorf("failed to create user service")
 	}
