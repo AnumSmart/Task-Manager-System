@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"global_models/global_db"
 	"strings"
 	"time"
 	"user-service/internal/domain"
@@ -69,6 +70,54 @@ func (db *UserServiceDBRepository) Create(ctx context.Context, user *domain.User
 	}
 
 	// result это уже реализация poolAdapter из pkg. (tag.RowsAffected())
+	if result == 0 {
+		return domain.ErrUserAlreadyExists
+	}
+	return nil
+}
+
+// CreateWithTx - создание пользователя в рамках переданной транзакции
+func (db *UserServiceDBRepository) CreateWithTx(ctx context.Context, tx global_db.Tx, user *domain.User) error {
+	if user == nil {
+		return domain.ErrInvalidInput
+	}
+
+	email := strings.TrimSpace(user.Email)
+	if email == "" {
+		return domain.ErrInvalidEmail
+	}
+	email = strings.ToLower(email)
+	user.Email = email
+
+	query := `
+        INSERT INTO users (
+            id, email, full_name, role, status, 
+            organization_id, password_hash, 
+            created_at, updated_at, last_login_at,
+            telegram_id, telegram_username
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        ON CONFLICT (email) DO NOTHING
+    `
+
+	result, err := tx.Exec(ctx, query,
+		user.ID, user.Email, user.FullName,
+		user.Role, user.Status, user.OrganizationID,
+		user.PasswordHash, user.CreatedAt, user.UpdatedAt,
+		user.LastLoginAt, user.TelegramID, user.TelegramUsername,
+	)
+
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			switch pgErr.Code {
+			case "23503":
+				return domain.ErrOrganizationNotFound
+			}
+		}
+		return fmt.Errorf("failed to create user: %w", err)
+	}
+
 	if result == 0 {
 		return domain.ErrUserAlreadyExists
 	}
@@ -363,6 +412,54 @@ func (db *UserServiceDBRepository) Update(ctx context.Context, user *domain.User
 		return domain.ErrUserNotFound
 	}
 
+	return nil
+}
+
+// UpdateWithTx - обновление пользователя в рамках переданной транзакции
+func (db *UserServiceDBRepository) UpdateWithTx(ctx context.Context, tx global_db.Tx, user *domain.User) error {
+	if user == nil || user.ID == "" {
+		return domain.ErrInvalidInput
+	}
+
+	email := strings.TrimSpace(user.Email)
+	if email == "" {
+		return domain.ErrInvalidEmail
+	}
+	email = strings.ToLower(email)
+	user.Email = email
+	user.UpdatedAt = time.Now()
+
+	query := `
+        UPDATE users
+        SET email = $1, full_name = $2, role = $3, status = $4,
+            organization_id = $5, password_hash = $6, updated_at = $7,
+            last_login_at = $8, telegram_id = $9, telegram_username = $10
+        WHERE id = $11 AND deleted_at IS NULL
+    `
+
+	result, err := tx.Exec(ctx, query,
+		user.Email, user.FullName, user.Role, user.Status,
+		user.OrganizationID, user.PasswordHash, user.UpdatedAt,
+		user.LastLoginAt, user.TelegramID, user.TelegramUsername,
+		user.ID,
+	)
+
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			switch pgErr.Code {
+			case "23503":
+				return domain.ErrOrganizationNotFound
+			case "23505":
+				return domain.ErrUserAlreadyExists
+			}
+		}
+		return fmt.Errorf("failed to update user: %w", err)
+	}
+
+	if result == 0 {
+		return domain.ErrUserNotFound
+	}
 	return nil
 }
 

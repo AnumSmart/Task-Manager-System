@@ -2,16 +2,19 @@ package repository
 
 import (
 	"context"
+	"global_models/global_db"
 	"user-service/internal/domain"
 )
 
 // Интерфейс ТОЛЬКО для сервисного слоя (для тестов), для логики пользователей
 type UserDBRepository interface {
 	Create(ctx context.Context, user *domain.User) error
+	CreateWithTx(ctx context.Context, tx global_db.Tx, user *domain.User) error
 	GetByID(ctx context.Context, id string) (*domain.User, error)
 	GetByTelegramID(ctx context.Context, telegramID int64) (*domain.User, error)
 	BatchGetByIDs(ctx context.Context, ids []string) ([]*domain.User, error)
 	Update(ctx context.Context, user *domain.User) error
+	UpdateWithTx(ctx context.Context, tx global_db.Tx, user *domain.User) error
 	Delete(ctx context.Context, id string) error
 	GetByEmail(ctx context.Context, email string) (*domain.User, error)
 	List(ctx context.Context, offset, limit int) ([]*domain.User, error)
