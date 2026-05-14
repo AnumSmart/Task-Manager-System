@@ -4,9 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"global_models/global_db"
 	"log"
 	"pkg/auth"
+	"pkg/outbox"
+	"time"
 	"user-service/internal/domain"
+	"user-service/internal/events"
 	"user-service/internal/server/repository"
 
 	"golang.org/x/crypto/bcrypt"
@@ -17,14 +21,18 @@ type UserServiceLayer struct {
 	UserRepo    repository.UserDBRepository    // использую интерфейс из repo слоя
 	Cache       repository.UserCacheRepository // использую интерфейс из repo слоя
 	authService auth.AuthInterface             // логика авторизации из пакета pkg/auth
+	pool        global_db.Pool                 // для начала транзакций
+	outboxRepo  outbox.OutboxRepository        // для сохранения в outbox
 }
 
 // NewUserLayer - конструктор для части сервисного слоя (пользователи)
-func NewUserLayer(repo *repository.UserServiceRepository, authService auth.AuthInterface) *UserServiceLayer {
+func NewUserLayer(repo *repository.UserServiceRepository, authService auth.AuthInterface, pool global_db.Pool, outboxRepo outbox.OutboxRepository) *UserServiceLayer {
 	return &UserServiceLayer{
 		UserRepo:    repo.DBRepo,
 		Cache:       repo.CacheRepo,
 		authService: authService,
+		pool:        pool,
+		outboxRepo:  outboxRepo,
 	}
 }
 
@@ -74,8 +82,11 @@ func (s *UserServiceLayer) invalidateUserCache(ctx context.Context, userID strin
 // ==================== ОСНОВНЫЕ CRUD ОПЕРАЦИИ ====================
 
 // CreateUser - создание нового пользователя
+// Транзакция специально вынесена в сервисный слой
 func (s *UserServiceLayer) CreateUser(ctx context.Context, req *domain.CreateUserRequest, createdBy string) (*domain.User, error) {
 	log.Printf("📝 Creating user: email=%s, org=%s", req.Email, req.OrganizationID)
+
+	// ========== ВАЛИДАЦИЯ (вне транзакции) ==========
 
 	// 1. Проверяем права создающего пользователя
 	requester, err := s.UserRepo.GetByID(ctx, createdBy)
@@ -96,10 +107,54 @@ func (s *UserServiceLayer) CreateUser(ctx context.Context, req *domain.CreateUse
 	// 3. Создаем пользователя через доменную модель
 	user := domain.NewUser(req.Email, req.FullName, req.Role, req.OrganizationID)
 
-	// 4. Сохраняем в БД
-	if err := s.UserRepo.Create(ctx, user); err != nil {
+	// 4. работы с транзакцией (создание пользователя + outbox)
+	// ==========  ТРАНЗАКЦИОННАЯ ЧАСТЬ ==========
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	// defer для отката при ошибке
+	success := false
+	defer func() {
+		if !success {
+			if rbErr := tx.Rollback(ctx); rbErr != nil {
+				log.Printf("failed to rollback transaction: %v", rbErr)
+			}
+			log.Printf("transaction rolled back for user: %s", user.Email)
+		}
+	}()
+
+	// Сохраняем пользователя
+	if err := s.UserRepo.CreateWithTx(ctx, tx, user); err != nil {
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
+
+	// Создаём outbox сообщение
+	event := events.NewUserCreatedEvent(user)
+	outboxMsg := &outbox.OutboxMessage{
+		EventID:    event.GetEventID(),
+		EventType:  event.GetEventType(),
+		Payload:    event,
+		RoutingKey: event.RoutingKey(),
+		Status:     outbox.StatusPending,
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+	}
+
+	// Сохраняем в outbox
+	if err := s.outboxRepo.SaveTx(ctx, tx, outboxMsg); err != nil {
+		return nil, fmt.Errorf("failed to save outbox message: %w", err)
+	}
+
+	// Коммит
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+	success = true
+
+	// ==========  ПОСТ-КОММИТ (кэш) ==========
 
 	// 5. Сохраняем в кэш
 	s.cacheUser(ctx, user)
