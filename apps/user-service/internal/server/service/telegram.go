@@ -4,28 +4,35 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"global_models/global_db"
 	"log"
 	"pkg/auth"
 	"pkg/auth/jwt"
+	"pkg/outbox"
 	"time"
 	"user-service/internal/domain"
+	"user-service/internal/events"
 	"user-service/internal/server/repository"
 )
 
 // структура части сервисного слоя, которая отвечает за работу телеграмм
 type TelegramLayer struct {
-	TeleRepo repository.UserDBRepository
-	Cache    repository.UserCacheRepository
-	Auth     auth.AuthInterface
+	TeleRepo   repository.UserDBRepository
+	Cache      repository.UserCacheRepository
+	Auth       auth.AuthInterface
+	pool       global_db.Pool          // для начала транзакций
+	outboxRepo outbox.OutboxRepository // для сохранения в outbox
 }
 
 // констркутор для части сервисного слоя (телеграмм)
 // в конструктор передаём составной репозиторий (на будущее)
-func NewTelegramLayer(repo *repository.UserServiceRepository, auth auth.AuthInterface) *TelegramLayer {
+func NewTelegramLayer(repo *repository.UserServiceRepository, auth auth.AuthInterface, pool global_db.Pool, outboxRepo outbox.OutboxRepository) *TelegramLayer {
 	return &TelegramLayer{
-		TeleRepo: repo.DBRepo,
-		Cache:    repo.CacheRepo,
-		Auth:     auth,
+		TeleRepo:   repo.DBRepo,
+		Cache:      repo.CacheRepo,
+		Auth:       auth,
+		pool:       pool,
+		outboxRepo: outboxRepo,
 	}
 }
 
@@ -90,6 +97,7 @@ func (t *TelegramLayer) invalidateTelegramCache(ctx context.Context, telegramID 
 }
 
 // LinkTelegramServ привязывает Telegram ID и возвращает accessToken, refreshToken и время жизни
+// Транзакция вынесена в сервисный слой
 func (t *TelegramLayer) LinkTelegramServ(ctx context.Context, email string, telegramID int64, telegramUsername string) (*domain.User, *jwt.TokenPair, int64, error) {
 	// 1. Поиск пользователя по email
 	user, err := t.TeleRepo.GetByEmail(ctx, email)
@@ -114,13 +122,63 @@ func (t *TelegramLayer) LinkTelegramServ(ctx context.Context, email string, tele
 		}
 		return nil, nil, 0, fmt.Errorf("к этому email уже привязан другой Telegram аккаунт")
 	}
+	// Сохраняем старый Telegram ID для инвалидации кэша
+	oldTelegramID := user.GetTelegramID()
 
 	// 4. Привязываем Telegram (используем доменный метод)
 	user.LinkTelegram(telegramID, telegramUsername)
 
-	// 5. Сохраняем обновления в БД
-	if err := t.TeleRepo.Update(ctx, user); err != nil {
-		return nil, nil, 0, fmt.Errorf("не удалось обновить пользователя: %w", err)
+	// ========== 5. ТРАНЗАКЦИОННАЯ ЧАСТЬ ==========
+
+	tx, err := t.pool.Begin(ctx)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	success := false
+	defer func() {
+		if !success {
+			if rbErr := tx.Rollback(ctx); rbErr != nil {
+				log.Printf("failed to rollback transaction: %v", rbErr)
+			}
+		}
+	}()
+
+	// 5.1 Обновляем пользователя
+	if err := t.TeleRepo.UpdateWithTx(ctx, tx, user); err != nil {
+		return nil, nil, 0, fmt.Errorf("failed to update user: %w", err)
+	}
+
+	// 5.2 Создаём outbox сообщение
+	event := events.NewTelegramLinkedEvent(user)
+	outboxMsg := &outbox.OutboxMessage{
+		EventID:    event.GetEventID(),
+		EventType:  event.GetEventType(),
+		Payload:    event,
+		RoutingKey: event.RoutingKey(),
+		Status:     outbox.StatusPending,
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+	}
+
+	// 5.3 Сохраняем в outbox
+	if err := t.outboxRepo.SaveTx(ctx, tx, outboxMsg); err != nil {
+		return nil, nil, 0, fmt.Errorf("failed to save outbox message: %w", err)
+	}
+
+	// 5.4 Коммит
+	if err := tx.Commit(ctx); err != nil {
+		return nil, nil, 0, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+	success = true
+
+	// ========== 6. ПОСТ-КОММИТ (кэш и токены) ==========
+
+	// Инвалидируем старый кэш по Telegram ID (если был)
+	if oldTelegramID != 0 {
+		if err := t.invalidateTelegramCache(ctx, oldTelegramID); err != nil {
+			log.Printf("⚠️ Failed to invalidate old telegram cache: %v", err)
+		}
 	}
 
 	// 🔥 6. Обновляем кэш (оба ключа)
@@ -137,6 +195,8 @@ func (t *TelegramLayer) LinkTelegramServ(ctx context.Context, email string, tele
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("не удалось сгенерировать JWT: %w", err)
 	}
+
+	log.Printf("✅ Telegram linked: user_id=%s, telegram_id=%d", user.ID, telegramID)
 
 	return user, tokenPair, tokenPair.ExpiresAt, nil
 }
