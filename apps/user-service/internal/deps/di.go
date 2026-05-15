@@ -7,7 +7,7 @@ import (
 	"global_models/global_db"
 	"log"
 	"pkg/auth"
-	"pkg/events"
+	"pkg/eventbus"
 	"pkg/outbox"
 	"pkg/rabbitmq"
 	"sync"
@@ -44,9 +44,9 @@ type Container struct {
 	userHandler *handler.UserServerHandler // userHandler - gRPC хендлер для работы с пользователями
 
 	// ==================== OUTBOX компоненты ==================
-	eventPublisher *events.EventPublisher           // публикатор событий, которые будут отправлены в брокер
+	eventPublisher *eventbus.EventPublisher         // публикатор событий, которые будут отправлены в брокер
 	outboxRepo     *outbox.PostgresOutboxRepository // репоизторий (интерфейс) для работы с outbox таблицей
-	outboxRegistry *outbox.EventRegistry            // реестр событий
+	eventRegistry  *eventbus.EventRegistry          // реестр событий
 	outboxRelay    *outbox.Relay                    // логика асинхронной публикации событий согласно outbox
 
 	// ==================== Сервер (GRPC) ======================
