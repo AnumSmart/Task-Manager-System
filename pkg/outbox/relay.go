@@ -5,26 +5,26 @@ import (
 	"global_models/global_db"
 	"log"
 	"pkg/configs"
-	"pkg/events"
+	"pkg/eventbus"
 	"time"
 )
 
 // Relay - реле для отправки событий из outbox
 type Relay struct {
-	repo      OutboxRepository           // интерфейс репозитрия для работы с outbox логикой
-	pool      global_db.Pool             // общая абстрация для БД
-	publisher *events.EventPublisher     // экземпляр event publisher
-	registry  *EventRegistry             // экземпляр реестра событий
-	config    *configs.OutboxRelayConfig // конфиг реле
-	stopCh    chan struct{}              // стоп-канал
+	repo      OutboxRepository                 // интерфейс репозитрия для работы с outbox логикой
+	pool      global_db.Pool                   // общая абстрация для БД
+	publisher eventbus.EventPublisherInterface // экземпляр event publisher
+	registry  eventbus.EventUnmarshaler        // используем интерфейс из eventbus
+	config    *configs.OutboxRelayConfig       // конфиг реле
+	stopCh    chan struct{}                    // стоп-канал
 }
 
 // конструктор для реле outbox
 func NewRelay(
 	repo OutboxRepository,
 	pool global_db.Pool,
-	publisher *events.EventPublisher,
-	registry *EventRegistry,
+	publisher eventbus.EventPublisherInterface,
+	registry eventbus.EventUnmarshaler,
 	config *configs.OutboxRelayConfig,
 ) *Relay {
 	return &Relay{

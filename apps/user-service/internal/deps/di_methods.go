@@ -6,6 +6,7 @@ import (
 	"log"
 	"pkg/auth"
 	postgresdb "pkg/db"
+	"pkg/eventbus"
 	ev "pkg/events"
 	"pkg/outbox"
 	"pkg/rabbitmq"
@@ -216,11 +217,11 @@ func (c *Container) initHandlers() error {
 // Инициализация outbox (регистрация событий)
 func (c *Container) initOutbox() error {
 	// Создаём реестр событий
-	c.outboxRegistry = outbox.NewEventRegistry()
+	c.eventRegistry = eventbus.NewEventRegistry()
 
 	// Регисрируем события для user-service
-	c.outboxRegistry.Register("user.created", func() ev.Event { return &events.UserCreatedEvent{} })
-	c.outboxRegistry.Register("user.telegram_linked", func() ev.Event { return &events.TelegramLinkedEvent{} })
+	c.eventRegistry.Register("user.created", func() ev.Event { return &events.UserCreatedEvent{} })
+	c.eventRegistry.Register("user.telegram_linked", func() ev.Event { return &events.TelegramLinkedEvent{} })
 
 	// Создаём outbox репозиторий
 	c.outboxRepo = outbox.NewPostgresOutboxRepository()
@@ -230,7 +231,7 @@ func (c *Container) initOutbox() error {
 
 // Инициализация EventPublisher
 func (c *Container) initEventPublisher() error {
-	c.eventPublisher = ev.NewEventPublisher(c.brokerClient, c.config.EPConfig)
+	c.eventPublisher = eventbus.NewEventPublisher(c.brokerClient, c.config.EPConfig)
 
 	c.addCloser(func() error {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -249,7 +250,7 @@ func (c *Container) startOutboxRelay(ctx context.Context) error {
 		return fmt.Errorf("Outbox config must not be nil")
 	}
 
-	c.outboxRelay = outbox.NewRelay(c.outboxRepo, c.pgPool, c.eventPublisher, c.outboxRegistry, c.config.OutboxRelayConfig)
+	c.outboxRelay = outbox.NewRelay(c.outboxRepo, c.pgPool, c.eventPublisher, c.eventRegistry, c.config.OutboxRelayConfig)
 
 	// Запускаем в горутине
 	go func() {

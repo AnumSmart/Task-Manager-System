@@ -1,10 +1,11 @@
-package events
+package eventbus
 
 import (
 	"context"
 	"fmt"
 	"log"
 	"pkg/configs"
+	"pkg/events"
 	"pkg/rabbitmq"
 	"sync"
 	"sync/atomic"
@@ -44,7 +45,7 @@ type EventPublisher struct {
 
 	// tasks - канал для событий, ожидающих публикации.
 	// Worker'ы читают из этого канала.
-	tasks chan Event
+	tasks chan events.Event
 
 	// closeCh - канал для сигнала завершения работы.
 	// При закрытии closeCh воркеры перестают принимать новые задачи.
@@ -75,7 +76,7 @@ func NewEventPublisher(broker rabbitmq.BrokerInterface, config *configs.EventPub
 	p := &EventPublisher{
 		broker:  broker,
 		config:  config,
-		tasks:   make(chan Event, config.QueueSize),
+		tasks:   make(chan events.Event, config.QueueSize),
 		closeCh: make(chan struct{}),
 	}
 
@@ -104,7 +105,7 @@ func NewEventPublisher(broker rabbitmq.BrokerInterface, config *configs.EventPub
 //
 // Важно: ошибка публикации в RabbitMQ НЕ возвращается здесь,
 // она логируется внутри worker'а и учитывается в метриках.
-func (p *EventPublisher) PublishAsync(event Event) error {
+func (p *EventPublisher) PublishAsync(event events.Event) error {
 	// Увеличиваем счётчик отправленных событий
 	p.submitted.Add(1)
 
@@ -127,7 +128,7 @@ func (p *EventPublisher) PublishAsync(event Event) error {
 //
 // Используйте для КРИТИЧЕСКИ ВАЖНЫХ событий, где потеря недопустима.
 // Для большинства случаев используйте PublishAsync (быстрее, не блокирует).
-func (p *EventPublisher) PublishSync(ctx context.Context, event Event) error {
+func (p *EventPublisher) PublishSync(ctx context.Context, event events.Event) error {
 	p.submitted.Add(1)
 	return p.publishWithRetry(ctx, event)
 }
@@ -207,7 +208,7 @@ func (p *EventPublisher) worker(workerId int) {
 
 // publishEvent - публикация одного события с retry.
 // Вызывается внутри воркера.
-func (p *EventPublisher) publishEvent(event Event, workerId int) {
+func (p *EventPublisher) publishEvent(event events.Event, workerId int) {
 	// Создаём контекст с таймаутом на всю операцию публикации
 	ctx, cancel := context.WithTimeout(context.Background(), p.config.PublishTimeout())
 	defer cancel()
@@ -233,7 +234,7 @@ func (p *EventPublisher) publishEvent(event Event, workerId int) {
 
 // publishWithRetry - публикация с повторными попытками.
 // Использует exponential backoff для увеличения задержки между попытками.
-func (p *EventPublisher) publishWithRetry(ctx context.Context, event Event) error {
+func (p *EventPublisher) publishWithRetry(ctx context.Context, event events.Event) error {
 	// Сериализуем событие в JSON
 	eventBytes, err := event.Marshal()
 	if err != nil {
@@ -277,7 +278,7 @@ func (p *EventPublisher) publishWithRetry(ctx context.Context, event Event) erro
 //   - сохранять в файл
 //   - сохранять в отдельную очередь RabbitMQ
 //   - сохранять в базу данных
-func (p *EventPublisher) saveToDeadLetter(event Event, reason error) {
+func (p *EventPublisher) saveToDeadLetter(event events.Event, reason error) {
 	// Для начала достаточно подробного лога
 	log.Printf("[EventPublisher] 💀 DEAD LETTER: event=%s, id=%s, reason=%v", event.GetEventType(), event.GetEventID(), reason)
 }
