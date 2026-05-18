@@ -268,12 +268,8 @@ func (c *Container) startOutboxRelay(ctx context.Context) error {
 		log.Println("🛑 Outbox Relay stopped")
 	}()
 
-	c.addCloser(func() error {
-		log.Println("  → Stopping Outbox Relay...")
-		c.outboxRelay.Stop()
-		return nil
-	})
-
+	// ❌ НЕ ДОБАВЛЯЕМ Stop() в closers
+	// закрываем через отмену контекста
 	return nil
 }
 
