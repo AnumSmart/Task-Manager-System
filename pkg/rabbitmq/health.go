@@ -73,13 +73,6 @@ func (b *Broker) Close() error {
 			log.Printf("[RabbitMQ] Timeout waiting for goroutines to finish")
 		}
 
-		// Закрываем канал confirms
-		b.publishMu.Lock()
-		if b.confirms != nil {
-			close(b.confirms)
-		}
-		b.publishMu.Unlock()
-
 		// Закрываем канал и соединение
 		b.connMu.Lock()
 		defer b.connMu.Unlock()
