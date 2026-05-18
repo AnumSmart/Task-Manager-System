@@ -8,7 +8,7 @@ package common.v1;
 
 // Указывает Go package path для сгенерированного кода.
 // Все сгенерированные .pb.go файлы будут иметь package common_v1, но физически
-// расположены в директории task_managenemt_system_v_1_20/api/gen/go/common/v1
+// расположены в директории task_managenemt_system/api/gen/go/common/v1
 // Это позволяет импортировать пакет в Go как: import "common_v1"
 option go_package = "api/gen/go/common/v1;common_v1";
 
