@@ -29,6 +29,13 @@
 
 ```
 task-management-system/
+├── api/                                # протофайлы
+│ ├── gen/                              # сгенерированные файлы
+│ ├── proto/                            # протофайлы
+│ |     ├── analytics/                  # proto для сервиса аналитики
+│ |     ├── common/                     # proto с общими моделями
+│ |     ├── task/                       # proto для сервиса задач
+│ |     ├── user/                       # proto для сервиса пользователей
 ├── apps/ # микросервисы
 │ ├── telegram-bot/                     # Telegram бот (интерфейс)
 │ ├── task-service/                     # управление задачами
