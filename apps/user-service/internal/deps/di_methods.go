@@ -32,6 +32,15 @@ func (c *Container) Close() error {
 
 		var errs []error
 
+		// Сначала отменяем фоновый контекст (для outbox relay и других фоновых процессов)
+		if c.backgroundCancel != nil {
+			log.Println("  → Cancelling background context...")
+			c.backgroundCancel()
+		}
+
+		// Даем немного времени на graceful остановку
+		time.Sleep(2 * time.Second)
+
 		// Закрываем в обратном порядке
 		for i := len(c.closers) - 1; i >= 0; i-- {
 			if err := c.closers[i](); err != nil {
@@ -259,12 +268,8 @@ func (c *Container) startOutboxRelay(ctx context.Context) error {
 		log.Println("🛑 Outbox Relay stopped")
 	}()
 
-	c.addCloser(func() error {
-		log.Println("  → Stopping Outbox Relay...")
-		c.outboxRelay.Stop()
-		return nil
-	})
-
+	// ❌ НЕ ДОБАВЛЯЕМ Stop() в closers
+	// закрываем через отмену контекста
 	return nil
 }
 

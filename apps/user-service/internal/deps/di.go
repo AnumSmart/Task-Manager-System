@@ -56,6 +56,10 @@ type Container struct {
 	closers   []func() error // closers - список функций для закрытия ресурсов. Каждый closer вызывается только один раз
 	closeOnce sync.Once      // closeOnce - гарантирует однократное закрытие ресурсов
 	closeErr  error          // closeErr - ошибка, возникшая при закрытии ресурсов
+
+	// Для управления жизненным циклом фоновых процессов
+	backgroundCtx    context.Context
+	backgroundCancel context.CancelFunc
 }
 
 // NewContainer создает контейнер
@@ -72,6 +76,9 @@ func NewContainer(ctx context.Context, cfg *config.UserServiceConfig) (*Containe
 		config:  cfg,
 		closers: make([]func() error, 0),
 	}
+
+	// Создаем отдельный контекст для фоновых процессов (таких как outbox relay)
+	c.backgroundCtx, c.backgroundCancel = context.WithCancel(context.Background())
 
 	// 1. Инициализация ресурсов
 	if err := c.initResources(ctx); err != nil {
@@ -109,7 +116,7 @@ func NewContainer(ctx context.Context, cfg *config.UserServiceConfig) (*Containe
 	}
 
 	// 7. Запуск Outbox Relay
-	if err := c.startOutboxRelay(ctx); err != nil {
+	if err := c.startOutboxRelay(c.backgroundCtx); err != nil {
 		c.Close()
 		return nil, fmt.Errorf("start outbox relay: %w", err)
 	}
