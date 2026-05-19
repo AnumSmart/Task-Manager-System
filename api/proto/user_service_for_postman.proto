@@ -1,0 +1,421 @@
+syntax = "proto3";
+
+package user.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// ==================== Перечисления (из common/v1/types.proto) ====================
+
+enum Role {
+    ROLE_UNSPECIFIED = 0;
+    ROLE_OWNER = 1;
+    ROLE_MANAGER = 2;
+    ROLE_EMPLOYEE = 3;
+}
+
+enum UserStatus {
+    USER_STATUS_UNSPECIFIED = 0;
+    USER_STATUS_ACTIVE = 1;
+    USER_STATUS_INACTIVE = 2;
+    USER_STATUS_SUSPENDED = 3;
+}
+
+enum TaskStatus {
+    TASK_STATUS_UNSPECIFIED = 0;
+    TASK_STATUS_NEW = 1;
+    TASK_STATUS_ASSIGNED = 2;
+    TASK_STATUS_IN_PROGRESS = 3;
+    TASK_STATUS_REVIEW = 4;
+    TASK_STATUS_COMPLETED = 5;
+    TASK_STATUS_REJECTED = 6;
+    TASK_STATUS_OVERDUE = 7;
+}
+
+enum TaskPriority {
+    TASK_PRIORITY_UNSPECIFIED = 0;
+    TASK_PRIORITY_LOW = 1;
+    TASK_PRIORITY_MEDIUM = 2;
+    TASK_PRIORITY_HIGH = 3;
+    TASK_PRIORITY_URGENT = 4;
+}
+
+// ==================== Общие сообщения (из common/v1/types.proto) ====================
+
+message Organization {
+    string id = 1;
+    string name = 2;
+    bool is_active = 3;
+    google.protobuf.Timestamp created_at = 4;
+    google.protobuf.Timestamp updated_at = 5;
+    string owner_id = 6;
+}
+
+message User {  
+    string id = 1;
+    string email = 2;
+    optional int64 telegram_id = 3;
+    optional string telegram_username = 4;
+    Role role = 5;
+    UserStatus status = 6;
+    string full_name = 7;
+    google.protobuf.Timestamp created_at = 8;
+    google.protobuf.Timestamp updated_at = 9;
+    optional google.protobuf.Timestamp last_login_at = 10;
+}
+
+message Task {
+    string id = 1;
+    string title = 2;
+    string description = 3;
+    string creator_id = 4;
+    string assignee_id = 5;
+    TaskStatus status = 6;
+    TaskPriority priority = 7;
+    google.protobuf.Timestamp deadline = 8;
+    google.protobuf.Timestamp created_at = 9;
+    google.protobuf.Timestamp updated_at = 10;
+    optional google.protobuf.Timestamp completed_at = 11;
+}
+
+message Pagination {
+    int32 page = 1;
+    int32 page_size = 2;
+    int32 total = 3;
+    int32 total_pages = 4;
+}
+
+message ErrorResponse {
+    string code = 1;
+    string message = 2;
+    map<string, string> details = 3;
+}
+
+message JWTClaims {
+    string user_id = 1;
+    string email = 2;
+    Role role = 3;
+    string organization_id = 4;
+    optional int64 telegram_id = 5;
+    string token_id = 6;
+    int64 issued_at = 7;
+    int64 expires_at = 8;
+}
+
+message AuthenticatedRequest {
+    string request_id = 1;
+    string jwt_token = 2;
+}
+
+message TokenResponse {
+    bool success = 1;
+    string jwt_token = 2;
+    int64 expires_in = 3;
+    JWTClaims claims = 4;
+    string error_message = 5;
+}
+
+message SessionInfo {
+    string session_id = 1;
+    string user_id = 2;
+    string ip_address = 3;
+    string user_agent = 4;
+    google.protobuf.Timestamp created_at = 5;
+    google.protobuf.Timestamp expires_at = 6;
+    google.protobuf.Timestamp last_activity = 7;
+}
+
+message UserJWTInfo {
+    string user_id = 1;
+    string email = 2;
+    Role role = 3;
+    string organization_id = 4;
+    optional int64 telegram_id = 5;
+    UserStatus status = 6;
+}
+
+// ==================== Сервис UserService (из user/v1/service.proto) ====================
+
+service UserService {
+    // Публичные методы (без авторизации)
+    rpc SetupInitialOrganization(SetupInitialOrganizationRequest) returns (SetupInitialOrganizationResponse);
+    rpc LinkTelegram(LinkTelegramRequest) returns (LinkTelegramResponse);
+    rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+    
+    // Методы с JWT авторизацией
+    rpc GetMyProfile(GetMyProfileRequest) returns (GetUserResponse);
+    rpc UpdateMyProfile(UpdateMyProfileRequest) returns (GetUserResponse);
+    rpc GetOrganization(GetOrganizationRequest) returns (GetOrganizationResponse);
+    rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+    rpc GetUser(GetUserRequest) returns (GetUserResponse);
+    rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse);
+    rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
+    rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+    rpc Logout(LogoutRequest) returns (LogoutResponse);
+    
+    // Методы для сервисов (API Key)
+    rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
+    rpc GetUserByID(GetUserByIDRequest) returns (GetUserResponse);
+    rpc GetUserByTelegram(GetUserByTelegramRequest) returns (GetUserResponse);
+    rpc BatchGetUsers(BatchGetUsersRequest) returns (BatchGetUsersResponse);
+    rpc ValidateUser(ValidateUserRequest) returns (ValidateUserResponse);
+    rpc CheckUserExists(CheckUserExistsRequest) returns (CheckUserExistsResponse);
+    rpc GetUsersByRole(GetUsersByRoleRequest) returns (GetUsersByRoleResponse);
+    rpc GetUserRole(GetUserRoleRequest) returns (GetUserRoleResponse);
+    rpc GetAllUsers(GetAllUsersRequest) returns (GetAllUsersResponse);
+}
+
+// ==================== Инициализация и организация ====================
+
+message SetupInitialOrganizationRequest {
+    string request_id = 1;
+    string organization_name = 2;
+    string owner_email = 3;
+    string owner_password = 4;
+    string owner_full_name = 5;
+}
+
+message SetupInitialOrganizationResponse {
+    bool success = 1;
+    Organization organization = 2;
+    User owner = 3;
+    string message = 4;
+    string error_message = 5;
+}
+
+message GetOrganizationRequest {
+    string request_id = 1;
+}
+
+message GetOrganizationResponse {
+    bool success = 1;
+    Organization organization = 2;
+    string error_message = 3;
+}
+
+// ==================== Управление пользователями (CRUD) ====================
+
+message CreateUserRequest {
+    string request_id = 1;
+    string email = 2;
+    string password = 3;
+    Role role = 4;
+    string full_name = 5;
+    optional int64 telegram_id = 6;
+}
+
+message CreateUserResponse {
+    bool success = 1;
+    User user = 2;
+    string error_message = 3;
+}
+
+message GetUserRequest {
+    string request_id = 1;
+    string user_id = 2;
+}
+
+message GetUserResponse {
+    bool success = 1;
+    User user = 2;
+    string error_message = 3;
+}
+
+message UpdateUserRequest {
+    string request_id = 1;
+    string user_id = 2;
+    optional string email = 3;
+    optional Role role = 4;
+    optional string full_name = 5;
+    optional UserStatus status = 6;
+}
+
+message UpdateUserResponse {
+    bool success = 1;
+    User user = 2;
+    string error_message = 3;
+}
+
+message DeleteUserRequest {
+    string request_id = 1;
+    string user_id = 2;
+    bool soft_delete = 3;
+}
+
+message DeleteUserResponse {
+    bool success = 1;
+    string error_message = 2;
+}
+
+message ListUsersRequest {  
+    string request_id = 1;
+    optional Role role = 2;
+    optional UserStatus status = 3;
+    int32 page = 4;
+    int32 page_size = 5;
+}
+
+message ListUsersResponse {
+    bool success = 1;
+    repeated User users = 2;
+    Pagination pagination = 3;
+    string error_message = 4;
+}
+
+// ==================== Для Telegram бота ====================
+
+message LinkTelegramRequest {
+    string request_id = 1;
+    string email = 2;
+    int64 telegram_id = 3;
+    optional string telegram_username = 4;
+}
+
+message LinkTelegramResponse {
+    bool success = 1;
+    string message = 2;
+    User user = 3;
+    string error_message = 4;
+    string jwt_token = 5;
+    int64 expires_in = 6;
+    JWTClaims claims = 7;
+    string refresh_token = 8;
+}
+
+message GetMyProfileRequest {
+    string request_id = 1;
+}
+
+message UpdateMyProfileRequest {
+    string request_id = 1;
+    optional string full_name = 2;
+}
+
+message GetUserByTelegramRequest {
+    string request_id = 1;
+    int64 telegram_id = 2;
+}
+
+// ==================== Для сервисов (task-service, notification-service) ====================
+
+message ValidateTokenRequest {
+    string request_id = 1;
+    string token = 2;
+}
+
+message ValidateTokenResponse {
+    bool success = 1;
+    bool valid = 2;
+    string user_id = 3;
+    string email = 4;
+    Role role = 5;
+    string organization_id = 6;
+    optional int64 telegram_id = 7;
+    int64 expires_at = 8;
+    string error_message = 9;
+}
+
+message GetUserByIDRequest {
+    string request_id = 1;
+    string user_id = 2;
+}
+
+message BatchGetUsersRequest {
+    string request_id = 1;
+    repeated string user_ids = 2;
+}
+
+message BatchGetUsersResponse {
+    bool success = 1;
+    map<string, User> users = 2;
+    repeated string not_found_ids = 3;
+    string error_message = 4;
+}
+
+message ValidateUserRequest {
+    string request_id = 1;
+    string user_id = 2;
+    repeated Role allowed_roles = 3;
+}
+
+message ValidateUserResponse {
+    bool success = 1;
+    bool is_valid = 2;
+    User user = 3;
+    string validation_error = 4;
+}
+
+message CheckUserExistsRequest {
+    string request_id = 1;
+    string user_id = 2;
+}
+
+message CheckUserExistsResponse {
+    bool success = 1;
+    bool exists = 2;
+    bool is_active = 3;
+    string error_message = 4;
+}
+
+// ==================== Для analytics-service ====================
+
+message GetAllUsersRequest {
+    string request_id = 1;
+    bool include_inactive = 2;
+    int32 limit = 3;
+    int32 offset = 4;
+}
+
+message GetAllUsersResponse {
+    bool success = 1;
+    repeated User users = 2;
+    int32 total = 3;
+    string error_message = 4;
+}
+
+message GetUsersByRoleRequest {
+    string request_id = 1;
+    Role role = 2;
+    bool include_inactive = 3;
+}
+
+message GetUsersByRoleResponse {
+    bool success = 1;
+    repeated User users = 2;
+    int32 total = 3;
+    string error_message = 4;
+}
+
+message GetUserRoleRequest {
+    string request_id = 1;
+    string user_id = 2;
+}
+
+message GetUserRoleResponse {
+    bool success = 1;
+    Role role = 2;
+    string error_message = 3;
+}
+
+// ==================== Выход из системы ====================
+
+message LogoutRequest {
+    string request_id = 1;
+}
+
+message LogoutResponse {
+    bool success = 1;
+    string message = 2;
+    string error_message = 3;
+}
+
+// ==================== Health Check ====================
+
+message HealthCheckRequest {
+    string request_id = 1;
+}
+
+message HealthCheckResponse {
+    bool success = 1;
+    string status = 2;
+    map<string, string> details = 3;
+}

@@ -102,18 +102,14 @@ func (o *OrganizationLayer) UpdateOwner(ctx context.Context, orgID, ownerID stri
 	if org == nil {
 		return domain.ErrOrganizationNotFound
 	}
-	// 3. Проверяем, что пользователь принадлежит этой организации
-	if ownerID != org.ID {
-		return domain.ErrUserNotBelongToOrganization
-	}
 
-	// 5. Обновляем OwnerID в репозитории
+	// 3. Обновляем OwnerID в репозитории
 	err = o.OrgRepo.UpdateOwner(ctx, orgID, ownerID)
 	if err != nil {
 		return err
 	}
 
-	// 6. Логируем (опционально)
+	// 4. Логируем (опционально)
 	log.Printf("✅ Organization owner updated: org_id=%s, owner_id=%s", orgID, ownerID)
 
 	return nil
@@ -138,13 +134,13 @@ func (o *OrganizationLayer) ActivateOrganization(ctx context.Context, orgID stri
 		return domain.ErrOrganizationNotFound
 	}
 
-	// 3. Проверяем, что владелец организации установлен
-	if org.OwnerID == "" {
+	// 3. Проверяем, что владелец организации установлен (не nil)
+	if org.OwnerID == nil {
 		return domain.ErrOrganizationNoOwner
 	}
 
-	// 4. Проверяем, что владелец совпадает с переданным ownerID
-	if org.OwnerID != owner.ID {
+	// 4. Проверяем, что владелец совпадает с переданным пользователем
+	if *org.OwnerID != owner.ID {
 		return domain.ErrNotOrganizationOwner
 	}
 

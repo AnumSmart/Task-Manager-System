@@ -3,16 +3,16 @@
 
 -- Создание таблицы organizations
 CREATE TABLE IF NOT EXISTS organizations (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id VARCHAR(36) PRIMARY KEY,  -- VARCHAR(36) для UUID (36 символов: 8-4-4-4-12)
     name VARCHAR(255) NOT NULL,
-    owner_id UUID NOT NULL,
+    owner_id VARCHAR(36) NULL,
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP WITH TIME ZONE NULL,
     
     -- Внешний ключ
-    CONSTRAINT fk_organizations_owner_id FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_organizations_owner_id FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE SET NULL,
     -- Уникальность имени для активных записей
     CONSTRAINT unique_organizations_name_deleted UNIQUE (name, deleted_at)
 );
@@ -20,7 +20,6 @@ CREATE TABLE IF NOT EXISTS organizations (
 -- Создание индексов
 CREATE INDEX idx_organizations_owner_id ON organizations(owner_id);
 CREATE INDEX idx_organizations_deleted_at ON organizations(deleted_at);
-CREATE INDEX idx_organizations_is_active ON organizations(is_active);
 
 -- Комментарии
 COMMENT ON TABLE organizations IS 'Organizations table';
