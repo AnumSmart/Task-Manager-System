@@ -11,7 +11,7 @@ type Organization struct {
 	ID        string
 	Name      string
 	IsActive  bool
-	OwnerID   string
+	OwnerID   *string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt *time.Time
@@ -19,11 +19,15 @@ type Organization struct {
 
 // Конструктор для создания новой организации
 func NewOrganization(name, ownerID string) *Organization {
+	var ownerIDPtr *string
+	if ownerID != "" {
+		ownerIDPtr = &ownerID
+	}
 	return &Organization{
 		ID:        GenerateID(), // используйте uuid.New().String()
 		Name:      name,
 		IsActive:  false, // только что создана, еще не активирована
-		OwnerID:   ownerID,
+		OwnerID:   ownerIDPtr,
 		CreatedAt: Now(),
 		UpdatedAt: Now(),
 	}
@@ -53,8 +57,9 @@ func (o *Organization) Deactivate() error {
 
 // UpdateName - обновление названия организации
 func (o *Organization) UpdateName(newName string, requestingUserID string) error {
-	// Только владелец может менять название
-	if requestingUserID != o.OwnerID {
+	// Владельца может не быть (nil), тогда никто не может менять имя?
+	// Или только пользователи с ролью OWNER? Смотрите бизнес-логику.
+	if o.OwnerID == nil || *o.OwnerID != requestingUserID {
 		return ErrOnlyOwnerCanModify
 	}
 
@@ -69,8 +74,9 @@ func (o *Organization) UpdateName(newName string, requestingUserID string) error
 
 // ChangeOwner - смена владельца организации
 func (o *Organization) ChangeOwner(newOwnerID string, requestingUserID string) error {
-	// Только текущий владелец может передать права
-	if requestingUserID != o.OwnerID {
+	// Владельца может не быть (nil), тогда никто не может менять имя?
+	// Или только пользователи с ролью OWNER? Смотрите бизнес-логику.
+	if o.OwnerID == nil || *o.OwnerID != requestingUserID {
 		return ErrOnlyOwnerCanModify
 	}
 
@@ -78,7 +84,7 @@ func (o *Organization) ChangeOwner(newOwnerID string, requestingUserID string) e
 		return errors.New("new owner id is required")
 	}
 
-	o.OwnerID = newOwnerID
+	o.OwnerID = &newOwnerID
 	o.UpdatedAt = Now()
 	return nil
 }
@@ -96,20 +102,24 @@ func (o *Organization) Validate() error {
 	if o.Name == "" {
 		return ErrOrganizationInvalidName
 	}
-	if o.OwnerID == "" {
-		return errors.New("owner id is required")
-	}
+
+	/*
+		if o.OwnerID == nil || *o.OwnerID == "" {
+			return errors.New("owner id is required")
+		}
+	*/
+
 	return nil
 }
 
 // CanUserManage - может ли пользователь управлять организацией
 func (o *Organization) CanUserManage(userID string, userRole Role) bool {
 	// Владелец организации или пользователь с ролью OWNER в системе
-	return o.OwnerID == userID || userRole == RoleOwner
+	return (o.OwnerID != nil && *o.OwnerID == userID) || userRole == RoleOwner
 }
 
 // String - для логирования (опционально)
 func (o *Organization) String() string {
-	return fmt.Sprintf("Organization{ID: %s, Name: %s, IsActive: %t, OwnerID: %s}",
+	return fmt.Sprintf("Organization{ID: %s, Name: %s, IsActive: %t, OwnerID: %v}",
 		o.ID, o.Name, o.IsActive, o.OwnerID)
 }
