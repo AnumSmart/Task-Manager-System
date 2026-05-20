@@ -28,6 +28,8 @@ func createDIContainer(cfg *config.UserServiceConfig) (*deps.Container, error) {
 	log.Println("  ✓ Repositories initialized")
 	log.Println("  ✓ Services initialized")
 	log.Println("  ✓ Handlers initialized")
+	log.Println("  ✓ RabbitMQ connection created")
+	log.Println("  ✓ OutBox Relay started")
 
 	return container, nil
 }
