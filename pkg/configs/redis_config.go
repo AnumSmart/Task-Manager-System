@@ -115,7 +115,7 @@ func NewRedisConfigFromEnv(prefix string) (*RedisConfig, error) {
 		errors = append(errors, err.Error())
 	}
 
-	maxConnAge, err := getEnvAsDurationWithValidation(makeEnvName("MAX_CON_AGE"), 30*time.Minute, 1*time.Minute, 50*time.Minute)
+	maxConnAge, err := getEnvAsDurationWithValidation(makeEnvName("MAX_CON_AGE"), 30*time.Minute, 1*time.Minute, 65*time.Minute)
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
@@ -125,7 +125,7 @@ func NewRedisConfigFromEnv(prefix string) (*RedisConfig, error) {
 		errors = append(errors, err.Error())
 	}
 
-	minRetryBackoff, err := getEnvAsDurationWithValidation(makeEnvName("MIN_RETRY_BACKOFF_MS"), 100*time.Millisecond, 50*time.Millisecond, 300*time.Millisecond)
+	minRetryBackoff, err := getEnvAsDurationWithValidation(makeEnvName("MIN_RETRY_BACKOFF_MS"), 100*time.Millisecond, 50*time.Millisecond, 550*time.Millisecond)
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
