@@ -22,6 +22,14 @@ type JWTConfig struct {
 	Issuer string
 }
 
+// Ошибки конфигурации JWT
+var (
+	ErrEmptySecretKey    = fmt.Errorf("JWT secret key is empty")
+	ErrWeakSecretKey     = fmt.Errorf("JWT secret key is too weak (min 32 characters)")
+	ErrInvalidAccessTTL  = fmt.Errorf("access token TTL must be positive")
+	ErrInvalidRefreshTTL = fmt.Errorf("refresh token TTL must be positive")
+)
+
 // LoadJWTConfig загружает JWT конфигурацию из переменных окружения
 func LoadJWTConfig() (*JWTConfig, error) {
 	cfg := &JWTConfig{
@@ -80,16 +88,16 @@ func MustLoadJWTConfig() *JWTConfig {
 // Validate проверяет корректность конфигурации
 func (c *JWTConfig) Validate() error {
 	if c.SecretKey == "" {
-		return fmt.Errorf("JWT secret key is empty")
+		return ErrEmptySecretKey
 	}
 	if len(c.SecretKey) < 32 {
-		return fmt.Errorf("JWT secret key is too weak (min 32 characters)")
+		return ErrWeakSecretKey
 	}
 	if c.AccessTokenTTL <= 0 {
-		return fmt.Errorf("access token TTL must be positive")
+		return ErrInvalidAccessTTL
 	}
 	if c.RefreshTokenTTL <= 0 {
-		return fmt.Errorf("refresh token TTL must be positive")
+		return ErrInvalidRefreshTTL
 	}
 	return nil
 }
