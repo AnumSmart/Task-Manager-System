@@ -43,7 +43,6 @@ task-management-system/
 │ ├── notification-service/             # уведомления
 │ └── analytics-service/                # аналитика
 ├── pkg/                                # общие библиотеки
-├── api/proto/                          # protobuf схемы
 ├── deployments/                        # Docker Compose
 ├── bin/                                # бинарники, типа goose
 ├── Makefile
@@ -107,8 +106,6 @@ analytics-service --------------- Аналитика и отчёты -----------
 ### 📊 Мониторинг
 
 Health check: curl http://localhost:50051/health
-
-Логи: Structured logging (JSON)
 
 Метрики: Prometheus (опционально)
 
