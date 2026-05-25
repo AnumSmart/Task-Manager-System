@@ -69,6 +69,19 @@ type User struct {
 	PasswordHash     string     // Только для внутреннего использования, не отправляется в API
 }
 
+// структруа для предварительного создания пользователя сразу из grpc запроса
+type IncomingUser struct {
+	Email          string
+	FullName       string
+	Role           Role
+	Status         UserStatus
+	OrganizationID string // Добавляем связь с организацией
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	TelegramID     *int64
+	Password       string
+}
+
 // ==================== КОНСТРУКТОРЫ ====================
 
 func NewUser(email, fullName string, role Role, organizationID string) *User {
@@ -278,14 +291,53 @@ func (u *User) Validate() error {
 	return nil
 }
 
+// Clone - функция для клонирования
+func (u *User) Clone() *User {
+	clone := &User{
+		ID:             u.ID,
+		Email:          u.Email,
+		Role:           u.Role,
+		Status:         u.Status,
+		FullName:       u.FullName,
+		OrganizationID: u.OrganizationID,
+		PasswordHash:   u.PasswordHash,
+		CreatedAt:      u.CreatedAt,
+		UpdatedAt:      u.UpdatedAt,
+	}
+
+	// Копируем указатели
+	if u.TelegramID != nil {
+		val := *u.TelegramID
+		clone.TelegramID = &val
+	}
+
+	if u.TelegramUsername != nil {
+		val := *u.TelegramUsername
+		clone.TelegramUsername = &val
+	}
+
+	if u.LastLoginAt != nil {
+		val := *u.LastLoginAt
+		clone.LastLoginAt = &val
+	}
+
+	if u.DeletedAt != nil {
+		val := *u.DeletedAt
+		clone.DeletedAt = &val
+	}
+
+	return clone
+}
+
 // ==================== DTO ДЛЯ ОПЕРАЦИЙ ====================
 
 // CreateUserRequest - DTO для создания пользователя
 type CreateUserRequest struct {
 	OrganizationID string `json:"organization_id" validate:"required"`
 	Email          string `json:"email" validate:"required,email"`
+	Password       string `json:"password" validate:"required,min=6"`
 	FullName       string `json:"full_name" validate:"required,min=2,max=100"`
-	Role           Role   `json:"role" validate:"required,oneof=OWNER MANAGER EMPLOYEE"`
+	Role           Role   `json:"role" validate:"required,oneof=MANAGER EMPLOYEE"`
 }
 
 // GetUserRequest - DTO для получения пользователя

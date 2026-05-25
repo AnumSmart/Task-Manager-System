@@ -173,6 +173,54 @@ func (db *UserServiceDBRepository) GetByID(ctx context.Context, id string) (*dom
 	return &user, nil
 }
 
+// GetByIDWithTx - получение пользователя в рамках переданной транзакции
+func (db *UserServiceDBRepository) GetByIDWithTx(ctx context.Context, tx global_db.Tx, id string) (*domain.User, error) {
+	// проверка на пустой id
+	if id == "" {
+		return nil, domain.ErrInvalidInput
+	}
+
+	// создаём строку запроса
+	query := `
+		SELECT id, email, full_name, role, status, 
+		       organization_id, password_hash, 
+		       created_at, updated_at, last_login_at,
+		       telegram_id, telegram_username 
+		FROM users 
+		WHERE id = $1 AND deleted_at IS NULL
+	`
+
+	// создаём переменную как структуру (не nil указатель)
+	var user domain.User
+
+	// делаем запрос в БД через транзакцию
+	err := tx.QueryRow(ctx, query, id).Scan(
+		&user.ID,
+		&user.Email,
+		&user.FullName,
+		&user.Role,
+		&user.Status,
+		&user.OrganizationID,
+		&user.PasswordHash,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+		&user.LastLoginAt,
+		&user.TelegramID,
+		&user.TelegramUsername,
+	)
+
+	if err != nil {
+		// сравнение ошибки на ошибку отсутствия пользователя
+		if errors.Is(pgx.ErrNoRows, err) {
+			return nil, domain.ErrUserNotFound
+		}
+		// какая-то другая ошибка
+		return nil, fmt.Errorf("failed to get user by id %s: %w", id, err)
+	}
+
+	return &user, nil
+}
+
 // метод получения пользователя по телеграмм ID
 func (db *UserServiceDBRepository) GetByTelegramID(ctx context.Context, telegramID int64) (*domain.User, error) {
 	// 1. Проверка контекста
@@ -650,38 +698,45 @@ func (db *UserServiceDBRepository) ListWithFilters(ctx context.Context, organiza
 		WHERE deleted_at IS NULL
 	`
 	args := []interface{}{}
+	conditions := []string{}
 	argIndex := 1
 
 	// Фильтр по организации (обязательный)
 	if organizationID != "" {
-		query += fmt.Sprintf(" AND organization_id = $%d", argIndex)
+		conditions = append(conditions, fmt.Sprintf("organization_id = $%d", argIndex))
 		args = append(args, organizationID)
 		argIndex++
 	}
 
 	// Фильтр по роли
 	if roleFilter != nil {
-		query += fmt.Sprintf(" AND role = $%d", argIndex)
+		conditions = append(conditions, fmt.Sprintf("role = $%d", argIndex))
 		args = append(args, string(*roleFilter))
 		argIndex++
 	}
 
 	// Фильтр по статусу
 	if statusFilter != nil {
-		query += fmt.Sprintf(" AND status = $%d", argIndex)
+		conditions = append(conditions, fmt.Sprintf("status = $%d", argIndex))
 		args = append(args, string(*statusFilter))
 		argIndex++
 	}
 
 	// Поиск по имени или email
 	if searchQuery != "" {
-		query += fmt.Sprintf(" AND (full_name ILIKE $%d OR email ILIKE $%d)", argIndex, argIndex+1)
+		conditions = append(conditions, fmt.Sprintf("(full_name ILIKE $%d OR email ILIKE $%d)", argIndex, argIndex+1))
 		searchPattern := "%" + searchQuery + "%"
 		args = append(args, searchPattern, searchPattern)
 		argIndex += 2
 	}
 
-	query += " ORDER BY created_at DESC LIMIT $%d OFFSET $%d"
+	// Собираем WHERE часть
+	if len(conditions) > 0 {
+		query += " AND " + strings.Join(conditions, " AND ")
+	}
+
+	// Добавляем ORDER BY, LIMIT, OFFSET
+	query += fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d OFFSET $%d", argIndex, argIndex+1)
 	args = append(args, limit, offset)
 
 	rows, err := db.Pool.Query(ctx, query, args...)

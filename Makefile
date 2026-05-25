@@ -6,6 +6,7 @@ USER_SERVICE_COMPOSE_CMD = $(DOCKER_COMPOSE) -f $(COMPOSE_USER_SERVICE_FILE) --e
 COMPOSE_RABBITMQ_FILE = deployments/rabbitmq/docker-compose.yml
 RABBITMQ_ENV_FILE = deployments/rabbitmq/.env
 RABBITMQ_COMPOSE_CMD = $(DOCKER_COMPOSE) -f $(COMPOSE_RABBITMQ_FILE) --env-file $(RABBITMQ_ENV_FILE)
+USER_SERVICE_CMD_PATH = apps/user-service/cmd
 
 # Запуск всех контейнеров (user-service + rabbitmq)
 .PHONY: up
@@ -76,6 +77,12 @@ rabbitmq_container_status:
 	@echo "[INFO] Container status:"
 	$(RABBITMQ_COMPOSE_CMD) ps
 
+# Запуск user-service
+.PHONY: user_service_start
+user_service_start:
+	echo "[INFO] Starting user-service"
+	go run -C $(USER_SERVICE_CMD_PATH) .
+
 # Показать все доступные команды
 .PHONY: help
 help:
@@ -91,6 +98,7 @@ help:
 	@echo "  make rabbitmq_container_up                   - Start RabbitMQ container"
 	@echo "  make rabbitmq_container_down                 - Stop RabbitMQ container"
 	@echo "  make rabbitmq_container_status               - Status for RabbitMQ container"
+	@echo "  make user_service_start                      - Start of user-service"
 
 
 

@@ -7,6 +7,7 @@ import (
 	"global_models/global_db"
 	"log"
 	"pkg/auth"
+	baseevent "pkg/events"
 	"pkg/outbox"
 	"time"
 	"user-service/internal/domain"
@@ -98,14 +99,49 @@ func (s *UserServiceLayer) CreateUser(ctx context.Context, req *domain.CreateUse
 		return nil, domain.ErrPermissionDenied
 	}
 
-	// 2. Проверяем, не существует ли пользователь с таким email
+	// Валидация входных данных
+	if req.Email == "" {
+		return nil, domain.ErrInvalidReqEmail
+	}
+	if req.Password == "" {
+		return nil, domain.ErrReqPasswordRequired
+	}
+	if len(req.Password) < 6 {
+		return nil, domain.ErrReqPasswordTooShort
+	}
+	if req.FullName == "" {
+		return nil, domain.ErrReqFullNameRequired
+	}
+
+	// Проверка, что MANAGER не создаёт OWNER или MANAGER
+	if requester.Role == domain.RoleManager {
+		if req.Role == domain.RoleOwner || req.Role == domain.RoleManager {
+			return nil, domain.ErrPermissionDenied
+		}
+		// Manager может создавать только EMPLOYEE
+		req.Role = domain.RoleEmployee
+	}
+
+	// 2. Проверка уникальности email (гонку решает БД)
 	existing, _ := s.UserRepo.GetByEmail(ctx, req.Email)
 	if existing != nil {
 		return nil, domain.ErrUserAlreadyExists
 	}
 
+	// Хеширование пароля (как в CreateUserSystem)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, fmt.Errorf("failed to hash password: %w", err)
+	}
+
 	// 3. Создаем пользователя через доменную модель
 	user := domain.NewUser(req.Email, req.FullName, req.Role, req.OrganizationID)
+	user.PasswordHash = string(hashedPassword)
+
+	// Дополнительная валидация
+	if err := user.Validate(); err != nil {
+		return nil, err
+	}
 
 	// 4. работы с транзакцией (создание пользователя + outbox)
 	// ==========  ТРАНЗАКЦИОННАЯ ЧАСТЬ ==========
@@ -280,68 +316,166 @@ func (s *UserServiceLayer) UpdateUser(ctx context.Context, req *domain.UpdateUse
 		return fmt.Errorf("requester not found: %w", err)
 	}
 
-	// 2. Получаем целевого пользователя
-	targetUser, err := s.GetUserByID(ctx, req.UserID)
-	if err != nil {
-		return domain.ErrUserNotFound
-	}
-
-	// 3. Проверяем права
+	// 2. Проверяем права
 	if !requester.CanUpdateUser(req.UserID, req.Updates) {
 		return domain.ErrPermissionDenied
 	}
 
-	// 4. Применяем обновления
-	if fullName, ok := req.Updates["full_name"].(string); ok {
-		targetUser.UpdateProfile(fullName)
+	// ========== ТРАНЗАКЦИЯ ==========
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	if email, ok := req.Updates["email"].(string); ok {
-		if err := targetUser.UpdateEmail(email); err != nil {
-			return err
+	success := false
+	defer func() {
+		if !success {
+			if rbErr := tx.Rollback(ctx); rbErr != nil {
+				log.Printf("failed to rollback transaction: %v", rbErr)
+			}
 		}
-		// Проверяем уникальность нового email
-		existing, _ := s.UserRepo.GetByEmail(ctx, email)
-		if existing != nil && existing.ID != targetUser.ID {
-			return domain.ErrUserAlreadyExists
-		}
+	}()
+
+	// 3. Получаем старого пользователя (в транзакции)
+	oldUser, err := s.UserRepo.GetByIDWithTx(ctx, tx, req.UserID)
+	if err != nil {
+		return domain.ErrUserNotFound
 	}
 
-	if role, ok := req.Updates["role"].(domain.Role); ok {
-		switch role {
-		case domain.RoleManager:
-			if err := targetUser.PromoteToManager(); err != nil {
-				return err
-			}
-		case domain.RoleEmployee:
-			if err := targetUser.DemoteToEmployee(); err != nil {
-				return err
-			}
-		}
-	}
+	// 4. Создаём копию для нового состояния
+	newUser := oldUser.Clone() // ← нужно добавить метод Clone()
 
-	if status, ok := req.Updates["status"].(domain.UserStatus); ok {
-		switch status {
-		case domain.UserStatusSuspended:
-			if err := targetUser.Suspend(); err != nil {
-				return err
-			}
-		case domain.UserStatusActive:
-			if err := targetUser.Activate(); err != nil {
-				return err
-			}
-		}
+	// 5. Применяем обновления к newUser
+	if err := s.applyUpdates(newUser, req.Updates); err != nil {
+		return err
 	}
-
-	// 5. Сохраняем в БД
-	if err := s.UserRepo.Update(ctx, targetUser); err != nil {
+	// 6. Сохраняем обновления
+	if err := s.UserRepo.UpdateWithTx(ctx, tx, newUser); err != nil {
 		return fmt.Errorf("failed to update user: %w", err)
 	}
 
-	// 6. Инвалидируем кэш
+	// 7. Генерируем и сохраняем события
+	events, err := s.buildAndSaveUserUpdateEvents(ctx, tx, oldUser, newUser, requester)
+	if err != nil {
+		return fmt.Errorf("failed to build and save update events to outbox: %w", err)
+	}
+
+	// 9. Коммит
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+	success = true
+
+	// ========== ПОСТ-КОММИТ ==========
+
+	// 10. Инвалидируем кэш
 	s.invalidateUserCache(ctx, req.UserID)
 
-	log.Printf("✅ User updated: ID=%s", req.UserID)
+	log.Printf("✅ User updated: ID=%s, events=%d", req.UserID, len(events))
+	return nil
+}
+
+// buildAndSaveUserEvents - анализирует изменения и сохраняет события в outbox
+func (s *UserServiceLayer) buildAndSaveUserUpdateEvents(ctx context.Context, tx global_db.Tx, oldUser, newUser *domain.User, requester *domain.User) ([]baseevent.Event, error) {
+	var savedEvents []baseevent.Event
+
+	// 1. Событие: изменение роли
+	if oldUser.Role != newUser.Role {
+		event := events.NewUserRoleChangedEvent(oldUser, newUser, requester.ID, requester.Role)
+		if err := s.saveOutboxEvent(ctx, tx, event); err != nil {
+			return savedEvents, fmt.Errorf("failed to save role changed event: %w", err)
+		}
+		savedEvents = append(savedEvents, event)
+		log.Printf("📤 Outbox event saved: user.role_changed for user %s", newUser.ID)
+	}
+
+	// 2. Событие: изменение статуса
+	if oldUser.Status != newUser.Status {
+		event := events.NewUserStatusChangedEvent(oldUser, newUser, requester.ID, requester.Role)
+		if err := s.saveOutboxEvent(ctx, tx, event); err != nil {
+			return savedEvents, fmt.Errorf("failed to save status changed event: %w", err)
+		}
+		savedEvents = append(savedEvents, event)
+		log.Printf("📤 Outbox event saved: user.status_changed for user %s", newUser.ID)
+	}
+
+	// 3. Событие: изменение email
+	if oldUser.Email != newUser.Email {
+		event := events.NewUserEmailChangedEvent(oldUser, newUser, requester.ID, requester.Role)
+		if err := s.saveOutboxEvent(ctx, tx, event); err != nil {
+			return savedEvents, fmt.Errorf("failed to save email changed event: %w", err)
+		}
+		savedEvents = append(savedEvents, event)
+		log.Printf("📤 Outbox event saved: user.email_changed for user %s", newUser.ID)
+	}
+
+	return savedEvents, nil
+}
+
+// saveOutboxEvent - сохраняет событие в outbox таблицу
+func (s *UserServiceLayer) saveOutboxEvent(ctx context.Context, tx global_db.Tx, event baseevent.Event) error {
+
+	// Создаём outbox сообщение
+	outboxMsg := &outbox.OutboxMessage{
+		EventID:    event.GetEventID(),
+		EventType:  event.GetEventType(),
+		Payload:    event,
+		RoutingKey: event.RoutingKey(),
+		Status:     outbox.StatusPending,
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+	}
+
+	// Сохраняем в outbox
+	if err := s.outboxRepo.SaveTx(ctx, tx, outboxMsg); err != nil {
+		return fmt.Errorf("failed to save outbox message: %w", err)
+	}
+
+	return nil
+}
+
+// Вспомогательная функция для применения обновлений
+func (s *UserServiceLayer) applyUpdates(user *domain.User, updates map[string]interface{}) error {
+	if fullName, ok := updates["full_name"].(string); ok {
+		user.UpdateProfile(fullName)
+	}
+
+	if email, ok := updates["email"].(string); ok {
+		if err := user.UpdateEmail(email); err != nil {
+			return err
+		}
+	}
+
+	if role, ok := updates["role"].(domain.Role); ok {
+		switch role {
+		case domain.RoleManager:
+			if err := user.PromoteToManager(); err != nil {
+				return err
+			}
+		case domain.RoleEmployee:
+			if err := user.DemoteToEmployee(); err != nil {
+				return err
+			}
+		case domain.RoleOwner:
+			// OWNER нельзя создать через UpdateUser, только через TransferOwnership
+			return domain.ErrInvalidRoleTransition
+		}
+	}
+
+	if status, ok := updates["status"].(domain.UserStatus); ok {
+		switch status {
+		case domain.UserStatusSuspended:
+			if err := user.Suspend(); err != nil {
+				return err
+			}
+		case domain.UserStatusActive:
+			if err := user.Activate(); err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 

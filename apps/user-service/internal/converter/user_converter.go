@@ -151,6 +151,32 @@ func ToDomainUserFromCreateRequest(req *userv1.CreateUserRequest, organizationID
 		OrganizationID: organizationID,          // ← приходит из JWT
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
+		// PasswordHash будет установлен в сервисе
+	}
+
+	if req.TelegramId != nil {
+		user.TelegramID = req.TelegramId
+	}
+
+	return user
+}
+
+// ToDomainUserFromCreateRequest создает доменную модель из CreateUserRequest
+// Обратите внимание: CreateUserRequest из user.v1, но User внутри - из common.v1
+func ToDomainIncUserFromCreateRequest(req *userv1.CreateUserRequest, organizationID string) *domain.IncomingUser {
+	if req == nil {
+		return nil
+	}
+
+	user := &domain.IncomingUser{
+		Email:          req.GetEmail(),
+		FullName:       req.GetFullName(),
+		Role:           ToDomainRole(req.GetRole()),
+		Status:         domain.UserStatusActive, // Новые пользователи активны по умолчанию
+		OrganizationID: organizationID,          // ← приходит из JWT
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
+		Password:       req.Password,
 	}
 
 	if req.TelegramId != nil {
