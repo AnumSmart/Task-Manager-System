@@ -46,7 +46,7 @@ func (s *UserServerHandler) CreateUser(ctx context.Context, req *pb.CreateUserRe
 	}
 
 	// 4. Конвертация с передачей organizationID
-	userToCreate := converter.ToDomainUserFromCreateRequest(req, organizationID)
+	userToCreate := converter.ToDomainIncUserFromCreateRequest(req, organizationID)
 	if userToCreate == nil {
 		return nil, status.Error(codes.InvalidArgument, "invalid user data")
 	}
@@ -55,6 +55,7 @@ func (s *UserServerHandler) CreateUser(ctx context.Context, req *pb.CreateUserRe
 	domainRequest := domain.CreateUserRequest{
 		OrganizationID: userToCreate.OrganizationID,
 		Email:          userToCreate.Email,
+		Password:       userToCreate.Password,
 		FullName:       userToCreate.FullName,
 		Role:           userToCreate.Role,
 	}
@@ -68,6 +69,7 @@ func (s *UserServerHandler) CreateUser(ctx context.Context, req *pb.CreateUserRe
 		if errors.Is(err, domain.ErrUserAlreadyExists) {
 			return nil, status.Error(codes.AlreadyExists, "пользователь уже существует")
 		}
+		log.Printf("Ошибка создания пользователя из сервисного слоя:%v\n", err)
 		return nil, status.Error(codes.Internal, "ошибка создания пользователя")
 	}
 
