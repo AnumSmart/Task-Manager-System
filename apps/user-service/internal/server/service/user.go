@@ -98,14 +98,49 @@ func (s *UserServiceLayer) CreateUser(ctx context.Context, req *domain.CreateUse
 		return nil, domain.ErrPermissionDenied
 	}
 
-	// 2. Проверяем, не существует ли пользователь с таким email
+	// Валидация входных данных
+	if req.Email == "" {
+		return nil, domain.ErrInvalidReqEmail
+	}
+	if req.Password == "" {
+		return nil, domain.ErrReqPasswordRequired
+	}
+	if len(req.Password) < 6 {
+		return nil, domain.ErrReqPasswordTooShort
+	}
+	if req.FullName == "" {
+		return nil, domain.ErrReqFullNameRequired
+	}
+
+	// Проверка, что MANAGER не создаёт OWNER или MANAGER
+	if requester.Role == domain.RoleManager {
+		if req.Role == domain.RoleOwner || req.Role == domain.RoleManager {
+			return nil, domain.ErrPermissionDenied
+		}
+		// Manager может создавать только EMPLOYEE
+		req.Role = domain.RoleEmployee
+	}
+
+	// 2. Проверка уникальности email (гонку решает БД)
 	existing, _ := s.UserRepo.GetByEmail(ctx, req.Email)
 	if existing != nil {
 		return nil, domain.ErrUserAlreadyExists
 	}
 
+	// Хеширование пароля (как в CreateUserSystem)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, fmt.Errorf("failed to hash password: %w", err)
+	}
+
 	// 3. Создаем пользователя через доменную модель
 	user := domain.NewUser(req.Email, req.FullName, req.Role, req.OrganizationID)
+	user.PasswordHash = string(hashedPassword)
+
+	// Дополнительная валидация
+	if err := user.Validate(); err != nil {
+		return nil, err
+	}
 
 	// 4. работы с транзакцией (создание пользователя + outbox)
 	// ==========  ТРАНЗАКЦИОННАЯ ЧАСТЬ ==========
