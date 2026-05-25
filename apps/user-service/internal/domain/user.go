@@ -69,6 +69,19 @@ type User struct {
 	PasswordHash     string     // Только для внутреннего использования, не отправляется в API
 }
 
+// структруа для предварительного создания пользователя сразу из grpc запроса
+type IncomingUser struct {
+	Email          string
+	FullName       string
+	Role           Role
+	Status         UserStatus
+	OrganizationID string // Добавляем связь с организацией
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	TelegramID     *int64
+	Password       string
+}
+
 // ==================== КОНСТРУКТОРЫ ====================
 
 func NewUser(email, fullName string, role Role, organizationID string) *User {
@@ -284,8 +297,9 @@ func (u *User) Validate() error {
 type CreateUserRequest struct {
 	OrganizationID string `json:"organization_id" validate:"required"`
 	Email          string `json:"email" validate:"required,email"`
+	Password       string `json:"password" validate:"required,min=6"`
 	FullName       string `json:"full_name" validate:"required,min=2,max=100"`
-	Role           Role   `json:"role" validate:"required,oneof=OWNER MANAGER EMPLOYEE"`
+	Role           Role   `json:"role" validate:"required,oneof=MANAGER EMPLOYEE"`
 }
 
 // GetUserRequest - DTO для получения пользователя
