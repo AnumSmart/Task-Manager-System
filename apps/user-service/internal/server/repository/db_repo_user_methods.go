@@ -173,6 +173,54 @@ func (db *UserServiceDBRepository) GetByID(ctx context.Context, id string) (*dom
 	return &user, nil
 }
 
+// GetByIDWithTx - получение пользователя в рамках переданной транзакции
+func (db *UserServiceDBRepository) GetByIDWithTx(ctx context.Context, tx global_db.Tx, id string) (*domain.User, error) {
+	// проверка на пустой id
+	if id == "" {
+		return nil, domain.ErrInvalidInput
+	}
+
+	// создаём строку запроса
+	query := `
+		SELECT id, email, full_name, role, status, 
+		       organization_id, password_hash, 
+		       created_at, updated_at, last_login_at,
+		       telegram_id, telegram_username 
+		FROM users 
+		WHERE id = $1 AND deleted_at IS NULL
+	`
+
+	// создаём переменную как структуру (не nil указатель)
+	var user domain.User
+
+	// делаем запрос в БД через транзакцию
+	err := tx.QueryRow(ctx, query, id).Scan(
+		&user.ID,
+		&user.Email,
+		&user.FullName,
+		&user.Role,
+		&user.Status,
+		&user.OrganizationID,
+		&user.PasswordHash,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+		&user.LastLoginAt,
+		&user.TelegramID,
+		&user.TelegramUsername,
+	)
+
+	if err != nil {
+		// сравнение ошибки на ошибку отсутствия пользователя
+		if errors.Is(pgx.ErrNoRows, err) {
+			return nil, domain.ErrUserNotFound
+		}
+		// какая-то другая ошибка
+		return nil, fmt.Errorf("failed to get user by id %s: %w", id, err)
+	}
+
+	return &user, nil
+}
+
 // метод получения пользователя по телеграмм ID
 func (db *UserServiceDBRepository) GetByTelegramID(ctx context.Context, telegramID int64) (*domain.User, error) {
 	// 1. Проверка контекста

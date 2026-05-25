@@ -255,7 +255,8 @@ func (s *UserServerHandler) UpdateUser(ctx context.Context, req *pb.UpdateUserRe
 	}
 
 	return &pb.UpdateUserResponse{
-		User: converter.ToProtoUserWithPermissions(updatedUser, currentUser),
+		Success: true,
+		User:    converter.ToProtoUserWithPermissions(updatedUser, currentUser),
 	}, nil
 }
 
