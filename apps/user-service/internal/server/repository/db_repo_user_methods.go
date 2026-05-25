@@ -650,38 +650,45 @@ func (db *UserServiceDBRepository) ListWithFilters(ctx context.Context, organiza
 		WHERE deleted_at IS NULL
 	`
 	args := []interface{}{}
+	conditions := []string{}
 	argIndex := 1
 
 	// Фильтр по организации (обязательный)
 	if organizationID != "" {
-		query += fmt.Sprintf(" AND organization_id = $%d", argIndex)
+		conditions = append(conditions, fmt.Sprintf("organization_id = $%d", argIndex))
 		args = append(args, organizationID)
 		argIndex++
 	}
 
 	// Фильтр по роли
 	if roleFilter != nil {
-		query += fmt.Sprintf(" AND role = $%d", argIndex)
+		conditions = append(conditions, fmt.Sprintf("role = $%d", argIndex))
 		args = append(args, string(*roleFilter))
 		argIndex++
 	}
 
 	// Фильтр по статусу
 	if statusFilter != nil {
-		query += fmt.Sprintf(" AND status = $%d", argIndex)
+		conditions = append(conditions, fmt.Sprintf("status = $%d", argIndex))
 		args = append(args, string(*statusFilter))
 		argIndex++
 	}
 
 	// Поиск по имени или email
 	if searchQuery != "" {
-		query += fmt.Sprintf(" AND (full_name ILIKE $%d OR email ILIKE $%d)", argIndex, argIndex+1)
+		conditions = append(conditions, fmt.Sprintf("(full_name ILIKE $%d OR email ILIKE $%d)", argIndex, argIndex+1))
 		searchPattern := "%" + searchQuery + "%"
 		args = append(args, searchPattern, searchPattern)
 		argIndex += 2
 	}
 
-	query += " ORDER BY created_at DESC LIMIT $%d OFFSET $%d"
+	// Собираем WHERE часть
+	if len(conditions) > 0 {
+		query += " AND " + strings.Join(conditions, " AND ")
+	}
+
+	// Добавляем ORDER BY, LIMIT, OFFSET
+	query += fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d OFFSET $%d", argIndex, argIndex+1)
 	args = append(args, limit, offset)
 
 	rows, err := db.Pool.Query(ctx, query, args...)
