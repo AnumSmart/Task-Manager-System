@@ -3,6 +3,7 @@ package jwt
 import (
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -56,6 +57,13 @@ func (m *Manager) GenerateTokenPair(userID, role, organizationID string) (*Token
 
 // generateToken создает один JWT токен
 func (m *Manager) generateToken(userID, role, organizationID string, ttl time.Duration, tokenType TokenType, sessionID string) (string, error) {
+	// Отладка: проверяем, что sessionID не пустой
+	if sessionID == "" {
+		return "", fmt.Errorf("sessionID is empty, cannot generate token")
+	}
+
+	log.Printf("🔐 Generating %s token with sessionID: %s for user: %s", tokenType, sessionID, userID)
+
 	now := time.Now()
 	claims := &CustomClaims{
 		UserID:         userID,

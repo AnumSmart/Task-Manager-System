@@ -1,6 +1,8 @@
 package jwt
 
 import (
+	"fmt"
+
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -37,6 +39,10 @@ func (c *CustomClaims) Validate() error {
 	}
 	if c.OrganizationID == "" {
 		return ErrMissingOrganizationID
+	}
+
+	if c.RegisteredClaims.ID == "" { // ← проверяем sessionID
+		return fmt.Errorf("missing session ID (jti)")
 	}
 	return nil
 }

@@ -18,7 +18,7 @@ func RecoveryInterceptor(ctx context.Context, req interface{},
 	defer func() {
 		if r := recover(); r != nil {
 			// Логируем стек вызовов для отладки
-			log.Printf("PANIC recovered in method %s: %v\nStack trace:\n%s",
+			log.Printf("🚨 PANIC recovered in method %s: %v\nStack trace:\n%s",
 				info.FullMethod, r, debug.Stack())
 
 			// Возвращаем клиенту стандартную ошибку (не раскрываем детали паники)
