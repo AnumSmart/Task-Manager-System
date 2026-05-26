@@ -421,8 +421,9 @@ func (db *UserServiceDBRepository) Update(ctx context.Context, user *domain.User
 									updated_at = $7,
 									last_login_at = $8,
 									telegram_id = $9,
-									telegram_username = $10
-						WHERE id = $11 WHERE id = $1 AND deleted_at IS NULL
+									telegram_username = $10,
+									deleted_at = $11
+						WHERE id = $12 AND deleted_at IS NULL
 	`
 
 	//выполняем запрос в БД
@@ -437,6 +438,7 @@ func (db *UserServiceDBRepository) Update(ctx context.Context, user *domain.User
 		user.LastLoginAt,
 		user.TelegramID,
 		user.TelegramUsername,
+		user.DeletedAt,
 		user.ID,
 	)
 

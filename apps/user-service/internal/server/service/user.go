@@ -535,6 +535,8 @@ func (s *UserServiceLayer) DeleteUser(ctx context.Context, req *domain.DeleteUse
 	} else {
 		// Мягкое удаление - меняем статус
 		targetUser.Status = domain.UserStatusInactive
+		deleteTime := time.Now()
+		targetUser.DeletedAt = &deleteTime
 		if err := s.UserRepo.Update(ctx, targetUser); err != nil {
 			return fmt.Errorf("failed to soft delete user: %w", err)
 		}
