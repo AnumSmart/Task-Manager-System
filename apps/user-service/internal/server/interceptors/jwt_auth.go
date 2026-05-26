@@ -170,6 +170,13 @@ func mapJWTErrorToGRPCStatus(err error) error {
 
 // addClaimsToContext добавляет данные из claims в контекст
 func addClaimsToContext(ctx context.Context, claims *jwt.CustomClaims) context.Context {
+	// Отладка
+	log.Printf("📝 Adding claims to context - SessionID: %s, UserID: %s", claims.RegisteredClaims.ID, claims.UserID)
+
+	if claims.ID == "" {
+		log.Printf("⚠️ WARNING: claims.ID (sessionID) is empty!")
+	}
+
 	ctx = context.WithValue(ctx, ContextKeyUserID, claims.UserID)
 	ctx = context.WithValue(ctx, ContextKeyRole, claims.Role)
 	ctx = context.WithValue(ctx, ContextKeyOrganizationID, claims.OrganizationID)

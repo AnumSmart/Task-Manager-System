@@ -277,6 +277,13 @@ func (s *UserServerHandler) UpdateMyProfile(ctx context.Context, req *pb.UpdateM
 
 // Logout - - выход из системы (отзыв JWT токена)
 func (s *UserServerHandler) Logout(ctx context.Context, req *pb.LogoutRequest) (*pb.LogoutResponse, error) {
+	defer func() {
+		if res := recover(); res != nil {
+			log.Println("Panic in grpc LogOut")
+			return
+		}
+	}()
+
 	select {
 	case <-ctx.Done():
 		log.Printf("❌ Контекст отменён: %v", ctx.Err())
@@ -284,8 +291,32 @@ func (s *UserServerHandler) Logout(ctx context.Context, req *pb.LogoutRequest) (
 	default:
 	}
 
-	// 1. Извлекаем userID из контекста (из JWT)
-	sessionID := ctx.Value("sessionID").(string)
+	// 1. Безопасное извлечение sessionID из контекста
+	sessionIDValue := ctx.Value(interceptors.ContextKeySessionID)
+	if sessionIDValue == nil {
+		log.Printf("❌ sessionID not found in context")
+		return &pb.LogoutResponse{
+			Success:      false,
+			ErrorMessage: "unauthorized: no session found",
+		}, nil
+	}
+
+	sessionID, ok := sessionIDValue.(string)
+	if !ok {
+		log.Printf("❌ sessionID has wrong type: %T", sessionIDValue)
+		return &pb.LogoutResponse{
+			Success:      false,
+			ErrorMessage: "unauthorized: invalid session format",
+		}, nil
+	}
+
+	if sessionID == "" {
+		log.Printf("❌ sessionID is empty")
+		return &pb.LogoutResponse{
+			Success:      false,
+			ErrorMessage: "unauthorized: empty session",
+		}, nil
+	}
 
 	// 2. Вызываем сервис
 	err := s.UserServerService.Telegram.LogOut(ctx, sessionID)
@@ -293,5 +324,7 @@ func (s *UserServerHandler) Logout(ctx context.Context, req *pb.LogoutRequest) (
 		return &pb.LogoutResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 
-	return &pb.LogoutResponse{Success: true}, nil
+	return &pb.LogoutResponse{
+		Success: true,
+		Message: "LogOut - done, refresh token was revoked!"}, nil
 }
