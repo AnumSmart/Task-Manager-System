@@ -1,0 +1,38 @@
+# Основные настройки сервера
+host: 'localhost'
+port: '8085'
+read_timeout: 5s
+write_timeout: 7s
+idle_timeout: 40s
+max_header_bytes: 1048576 # 1MB
+
+# Режим работы бота: "polling" или "webhook"
+# polling - для разработки (не требует домена)
+# webhook - для продакшена (требует домен и SSL)
+mode: 'polling' # или 'webhook' для продакшена
+
+# Настройки для polling режима
+polling:
+  enabled: true # Активно только когда mode = 'polling'
+  timeout: 60 # Таймаут long polling в секундах
+  offset: 0 # Начальный offset обновлений
+  allowed_updates:
+    - 'message'
+    - 'callback_query'
+  retry_delay: 3s # Задержка при ошибке
+
+# Настройки для webhook режима
+webhook:
+  enabled: false # Активно только когда mode = 'webhook'
+  url: 'https://bot.example.com' # Твой домен
+  path: '/webhook' # Путь для вебхука
+  max_connections: 40 # Максимум одновременных соединений
+  allowed_updates:
+    - 'message'
+    - 'callback_query'
+
+# Лимиты и ограничения
+limits:
+  max_message_size: 4096 # Максимальный размер сообщения в символах
+  rate_limit: 30 # Сообщений в минуту на пользователя
+  concurrent_workers: 10 # Количество одновременных обработчиков
