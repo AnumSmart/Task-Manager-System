@@ -5,4 +5,5 @@ use (
 	./pkg
 	./api
 	./global_models
+	./apps/telegram-bot
 )
