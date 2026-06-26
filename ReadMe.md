@@ -50,6 +50,25 @@ task-management-system/
 └── README.md
 ```
 
+## 🏗️ Архитектура
+
+### Коммуникация между сервисами
+
+Telegram → Bot → gRPC → Task/User Service → RabbitMQ → Notification Service → Telegram API
+
+### Потоки данных
+
+1. **Создание задачи**:
+
+   - Пользователь → Bot → Task Service → RabbitMQ → Notification → Telegram
+
+2. **Привязка Telegram**:
+
+   - Пользователь → Bot → User Service (создаёт JWT) → Bot (сохраняет в Redis)
+
+3. **Уведомления**:
+   - Событие → RabbitMQ → Notification Service → Telegram API
+
 ## 🚦 Статусы задач
 
 | Статус        | Описание                    |
