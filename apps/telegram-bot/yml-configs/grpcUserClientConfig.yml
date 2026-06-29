@@ -1,0 +1,6 @@
+# client.yml - Минимальный конфиг для gRPC клиента
+host: 'localhost' # Хост gRPC сервера
+port: '50052' # Порт gRPC сервера
+service_name: 'telegram-bot' # Имя сервиса для API Key авторизации
+service_key: '${SERVICE_KEY}' # Ключ авторизации (из переменных окружения)
+timeout: '10s' # Таймаут на запрос
