@@ -20,7 +20,7 @@ type GrpcClientConfig struct {
 }
 
 // загружаем конфиг
-func LoadConfig(envPath string) (*GrpcClientConfig, error) {
+func LoadGrpcClientConfig(envPath string) (*GrpcClientConfig, error) {
 	if envPath == "" {
 		return nil, fmt.Errorf("Error during loading config: empty env file path")
 	}
@@ -30,7 +30,7 @@ func LoadConfig(envPath string) (*GrpcClientConfig, error) {
 		return nil, fmt.Errorf("Error during loading config: %s\n", err.Error())
 	}
 
-	config, err := configs.LoadYAMLConfig[GrpcClientConfig](os.Getenv("GRPC_CLIENT_CONFIG"), LoadDefaultGrpcClientCOnfig)
+	config, err := configs.LoadYAMLConfig[GrpcClientConfig](os.Getenv("USER_GRPC_CLIENT_CONFIG_ADDRESS_STRING"), LoadDefaultGrpcClientCOnfig)
 	if err != nil {
 		// Обрабатываем ошибку (файл есть, но не читается или не парсится)
 		log.Fatalf("Failed to load config: %v", err)
