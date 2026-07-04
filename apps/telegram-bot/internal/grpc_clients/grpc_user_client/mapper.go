@@ -1,4 +1,4 @@
-package user
+package grpcuserclient
 
 import (
 	commonpb "api/gen/go/common/v1"

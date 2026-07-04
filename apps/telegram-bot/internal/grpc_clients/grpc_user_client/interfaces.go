@@ -1,4 +1,4 @@
-package user
+package grpcuserclient
 
 import (
 	pb "api/gen/go/user/v1"
@@ -18,6 +18,7 @@ type PublicUserService interface {
 	SetupInitialOrganization(ctx context.Context, req *pb.SetupInitialOrganizationRequest) (*pb.SetupInitialOrganizationResponse, error)
 	LinkTelegram(ctx context.Context, req *pb.LinkTelegramRequest) (*pb.LinkTelegramResponse, error)
 	HealthCheck(ctx context.Context, req *pb.HealthCheckRequest) (*pb.HealthCheckResponse, error)
+	Close() error
 }
 
 // 2. Профиль пользователя

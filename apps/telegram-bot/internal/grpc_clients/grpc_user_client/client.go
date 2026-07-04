@@ -1,4 +1,4 @@
-package user
+package grpcuserclient
 
 import (
 	pb "api/gen/go/user/v1" // Импортируем сгенерированные protobuf - это как контракт, по которому клиент и сервер будут общаться
