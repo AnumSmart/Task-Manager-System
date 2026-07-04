@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"os"
 	"pkg/configs"
-
-	"github.com/joho/godotenv"
 )
 
 type BotConfig struct {
@@ -19,16 +17,7 @@ type BotConfig struct {
 	Environment string `yaml:"environment"`
 }
 
-func LoadBotConfig(envPath string) (config *BotConfig, err error) {
-	// проверяем наличие пути до файла .env
-	if envPath == "" {
-		return nil, fmt.Errorf("Error during loading config: empty env file path")
-	}
-
-	err = godotenv.Load(envPath)
-	if err != nil {
-		return nil, fmt.Errorf("Error during loading config: %s\n", err.Error())
-	}
+func LoadBotConfig() (config *BotConfig, err error) {
 
 	// загружаем конфиг из .yml файла
 	botConfig, err := configs.LoadYAMLConfig[BotConfig](os.Getenv("BOT_CONFIG_ADDRESS_STRING"), UseDefaultBotConfig)

@@ -6,8 +6,6 @@ import (
 	"os"
 	"pkg/configs"
 	"time"
-
-	"github.com/joho/godotenv"
 )
 
 // конфиг для подключения к grpc клиенту
@@ -20,15 +18,7 @@ type GrpcClientConfig struct {
 }
 
 // загружаем конфиг
-func LoadGrpcClientConfig(envPath string) (*GrpcClientConfig, error) {
-	if envPath == "" {
-		return nil, fmt.Errorf("Error during loading config: empty env file path")
-	}
-
-	err := godotenv.Load(envPath)
-	if err != nil {
-		return nil, fmt.Errorf("Error during loading config: %s\n", err.Error())
-	}
+func LoadGrpcClientConfig() (*GrpcClientConfig, error) {
 
 	config, err := configs.LoadYAMLConfig[GrpcClientConfig](os.Getenv("USER_GRPC_CLIENT_CONFIG_ADDRESS_STRING"), LoadDefaultGrpcClientCOnfig)
 	if err != nil {

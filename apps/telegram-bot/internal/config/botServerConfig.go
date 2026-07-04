@@ -1,13 +1,10 @@
 package config
 
 import (
-	"fmt"
 	"log"
 	"os"
 	configs "pkg/configs"
 	"time"
-
-	"github.com/joho/godotenv"
 )
 
 // структрура конфига для сервиса сервера бота
@@ -52,27 +49,12 @@ type ConfigError struct {
 	Msg   string
 }
 
-// путь к .env файлу
-const (
-	envPath = "c:\\Son_Alex\\GO_projects\\task_management_system\\apps\\telegram-bot\\.env"
-)
-
 // метод вспомогательной функции для формирования ошибок
 func (e *ConfigError) Error() string {
 	return "config error in field '" + e.Field + "': " + e.Msg
 }
 
-func LoadBotHttpServerConfig(envPath string) (*BotHttpServerConfig, error) {
-	// проверяем наличие пути до файла .env
-	if envPath == "" {
-		return nil, fmt.Errorf("Error during loading config: empty env file path")
-	}
-
-	err := godotenv.Load(envPath)
-	if err != nil {
-		return nil, fmt.Errorf("Error during loading config: %s\n", err.Error())
-	}
-
+func LoadBotHttpServerConfig() (*BotHttpServerConfig, error) {
 	// Загрузка конфига
 	config, err := configs.LoadYAMLConfig[BotHttpServerConfig](os.Getenv("BOT_HTTP_SERVER_CONFIG_ADDRESS_STRING"), UseDefaultBotHttpServerConfig)
 	if err != nil {
