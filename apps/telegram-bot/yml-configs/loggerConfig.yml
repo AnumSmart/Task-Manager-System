@@ -1,0 +1,4 @@
+level: info
+format: text
+add_source: true
+service: telegram-bot
