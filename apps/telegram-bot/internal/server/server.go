@@ -12,7 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// BotGateway - HTTP сервер для ботов
+// BotGateway - HTTP сервер для ботов.
 type BotGateway struct {
 	httpServer *http.Server                // базовый сервер из пакета http
 	router     *gin.Engine                 // роутер gin
@@ -24,15 +24,15 @@ type BotGateway struct {
 	*PollingBotManager // ← выносим логику бота в отдельную структуру
 }
 
-// Конструктор для сервера
+// Конструктор для сервера.
 func NewBotGateway(ctx context.Context, config *config.BotHttpServerConfig,
 	botConf *config.BotConfig,
 	handler *handlers.BotHttpHandler,
 ) (*BotGateway, error) {
-
 	// Создаём роутер
 	router := gin.Default()
-	if err := router.SetTrustedProxies(nil); err != nil {
+	err := router.SetTrustedProxies(nil)
+	if err != nil {
 		return nil, err
 	}
 
@@ -56,13 +56,14 @@ func NewBotGateway(ctx context.Context, config *config.BotHttpServerConfig,
 		if err != nil {
 			return nil, fmt.Errorf("create polling bot manager: %w", err)
 		}
+
 		gateway.PollingBotManager = botManager
 	}
 
 	return gateway, nil
 }
 
-// registerRoutes - регистрация всех маршрутов
+// registerRoutes - регистрация всех маршрутов.
 func (a *BotGateway) registerRoutes() {
 	// Health check
 	a.router.GET("/health", a.healthCheck)
@@ -79,16 +80,18 @@ func (a *BotGateway) registerRoutes() {
 	}
 }
 
-// Run - запуск сервера
+// Run - запуск сервера.
 func (a *BotGateway) Run() error {
 	// Регистрируем маршруты
 	a.registerRoutes()
 
 	// Если режим polling - запускаем бота
 	if a.config.Mode == "polling" && a.PollingBotManager != nil {
-		if err := a.PollingBotManager.Start(); err != nil {
+		err := a.Start()
+		if err != nil {
 			return fmt.Errorf("start polling bot: %w", err)
 		}
+
 		log.Println("✅ Long polling бот запущен в фоновом режиме")
 	}
 
@@ -99,17 +102,20 @@ func (a *BotGateway) Run() error {
 	}
 
 	log.Printf("🚀 Starting HTTP server on %s in %s mode", a.config.Addr(), a.config.Mode)
+
 	return a.httpServer.ListenAndServe()
 }
 
-// Shutdown - graceful shutdown
+// Shutdown - graceful shutdown.
 func (a *BotGateway) Shutdown(ctx context.Context) error {
 	log.Println("🛑 Начинаем graceful shutdown...")
 
 	// 1. Останавливаем HTTP сервер
 	if a.httpServer != nil {
 		log.Println("⏹️ Останавливаем HTTP сервер...")
-		if err := a.httpServer.Shutdown(ctx); err != nil {
+
+		err := a.httpServer.Shutdown(ctx)
+		if err != nil {
 			log.Printf("⚠️ HTTP server shutdown error: %v", err)
 		}
 	}
@@ -117,72 +123,85 @@ func (a *BotGateway) Shutdown(ctx context.Context) error {
 	// 2. Останавливаем бота (если запущен)
 	if a.PollingBotManager != nil {
 		log.Println("⏹️ Останавливаем Telegram бота...")
-		if err := a.PollingBotManager.Stop(ctx); err != nil {
+
+		err := a.Stop(ctx)
+		if err != nil {
 			log.Printf("⚠️ Bot stop error: %v", err)
 		}
 	}
 
 	log.Println("✅ HTTP BOT Server shutdown completed")
+
 	return nil
 }
 
-// healthCheck - проверка состояния
+// healthCheck - проверка состояния.
 func (a *BotGateway) healthCheck(c *gin.Context) {
-	status := map[string]interface{}{
+	status := map[string]any{
 		"status": "ok",
 		"time":   time.Now().Unix(),
 		"mode":   a.config.Mode,
-		"bot": map[string]interface{}{
-			"running": a.PollingBotManager != nil && a.PollingBotManager.IsRunning(),
+		"bot": map[string]any{
+			"running": a.PollingBotManager != nil && a.IsRunning(),
 		},
 	}
 	c.JSON(http.StatusOK, status)
 }
 
-// metricsHandler - метрики
+// metricsHandler - метрики.
 func (a *BotGateway) metricsHandler(c *gin.Context) {
-	metrics := map[string]interface{}{
+	metrics := map[string]any{
 		"messages_processed": 0, // TODO: добавить счетчики
 		"active_sessions":    0,
-		"bot_status":         a.PollingBotManager != nil && a.PollingBotManager.IsRunning(),
+		"bot_status":         a.PollingBotManager != nil && a.IsRunning(),
 	}
 	c.JSON(http.StatusOK, metrics)
 }
 
-// getStatus - статус бота
+// getStatus - статус бота.
 func (a *BotGateway) getStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"mode":    a.config.Mode,
-		"running": a.PollingBotManager != nil && a.PollingBotManager.IsRunning(),
+		"running": a.PollingBotManager != nil && a.IsRunning(),
 	})
 }
 
-// stopBot - остановка бота (админский эндпоинт)
+// stopBot - остановка бота (админский эндпоинт).
 func (a *BotGateway) stopBot(c *gin.Context) {
 	if a.PollingBotManager == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "bot not initialized"})
+
 		return
 	}
 
-	if err := a.PollingBotManager.Stop(c.Request.Context()); err != nil {
+	err := a.Stop(c.Request.Context())
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "bot stopped"})
 }
 
-// startBot - запуск бота (админский эндпоинт)
+// startBot - запуск бота (админский эндпоинт).
 func (a *BotGateway) startBot(c *gin.Context) {
 	if a.PollingBotManager == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "bot not initialized"})
+
 		return
 	}
 
-	if err := a.PollingBotManager.Start(); err != nil {
+	err := a.Start()
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "bot started"})
+}
+
+func (a *BotGateway) GetPort() string {
+	return a.config.Port
 }
