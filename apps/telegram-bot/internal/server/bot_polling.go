@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -12,7 +13,7 @@ import (
 	tele "gopkg.in/telebot.v4"
 )
 
-// PollingBotManager - управление long polling ботом
+// PollingBotManager - управление long polling ботом.
 type PollingBotManager struct {
 	telegramBot *tele.Bot                // экземпляр бота
 	handler     *handlers.BotHttpHandler // хэндлер для бизнес-логики
@@ -27,12 +28,11 @@ type PollingBotManager struct {
 	mu        sync.RWMutex
 }
 
-// NewPollingBotManager - конструктор менеджера бота
+// NewPollingBotManager - конструктор менеджера бота.
 func NewPollingBotManager(
 	botConfig *config.BotConfig,
 	handler *handlers.BotHttpHandler,
 ) (*PollingBotManager, error) {
-
 	// Настройки бота
 	pref := tele.Settings{
 		Token: botConfig.BotToken,
@@ -55,13 +55,13 @@ func NewPollingBotManager(
 	}, nil
 }
 
-// Start - запуск бота
+// Start - запуск бота.
 func (m *PollingBotManager) Start() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if m.isRunning {
-		return fmt.Errorf("bot already running")
+		return errors.New("bot already running")
 	}
 
 	// Создаём контекст для управления ботом
@@ -75,12 +75,13 @@ func (m *PollingBotManager) Start() error {
 	go m.run()
 
 	m.isRunning = true
+
 	log.Println("✅ Long polling бот запущен")
 
 	return nil
 }
 
-// Stop - остановка бота
+// Stop - остановка бота.
 func (m *PollingBotManager) Stop(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -98,6 +99,7 @@ func (m *PollingBotManager) Stop(ctx context.Context) error {
 
 	// Ждём завершения с таймаутом
 	done := make(chan struct{})
+
 	go func() {
 		m.botWg.Wait()
 		close(done)
@@ -119,14 +121,15 @@ func (m *PollingBotManager) Stop(ctx context.Context) error {
 	return nil
 }
 
-// IsRunning - проверка, запущен ли бот
+// IsRunning - проверка, запущен ли бот.
 func (m *PollingBotManager) IsRunning() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+
 	return m.isRunning
 }
 
-// registerHandlers - регистрация обработчиков бота
+// registerHandlers - регистрация обработчиков бота.
 func (m *PollingBotManager) registerHandlers() {
 	// Обработка callback-запросов от inline клавиатур
 	m.telegramBot.Handle(tele.OnCallback, func(c tele.Context) error {
@@ -151,7 +154,7 @@ func (m *PollingBotManager) registerHandlers() {
 	log.Println("📝 Обработчики бота зарегистрированы")
 }
 
-// run - основной цикл бота (запускается в горутине)
+// run - основной цикл бота (запускается в горутине).
 func (m *PollingBotManager) run() {
 	defer m.botWg.Done()
 
@@ -175,7 +178,7 @@ func (m *PollingBotManager) run() {
 	log.Println("🛑 Telegram bot (long polling) stopped")
 }
 
-// GetBot - получить экземпляр бота (если нужно)
+// GetBot - получить экземпляр бота (если нужно).
 func (m *PollingBotManager) GetBot() *tele.Bot {
 	return m.telegramBot
 }

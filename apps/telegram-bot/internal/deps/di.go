@@ -7,9 +7,11 @@ import (
 	"sync"
 	"telegram-bot/internal/config"
 	grpcuserclient "telegram-bot/internal/grpc_clients/grpc_user_client"
+	"telegram-bot/internal/server"
+	"telegram-bot/internal/server/handlers"
 )
 
-// Container - DI контейнер
+// Container - DI контейнер.
 type Container struct {
 	// ==================== КОНФИГУРАЦИЯ ====================
 	config *config.AppConfig
@@ -22,9 +24,12 @@ type Container struct {
 	// ==================== СЕРВИСЫ (БИЗНЕС-ЛОГИКА) ====================
 
 	// ==================== ХЕНДЛЕРЫ ====================
-
+	botHandler *handlers.BotHttpHandler
 	// ==================== Клиент (GRPC) ======================
 	userGrpcClient grpcuserclient.FullUserGrpcService
+
+	// ==================== Сервер (HTTP) ======================
+	botGateway *server.BotGateway // сервер для работы с телеграмм ботом
 
 	// ==================== УПРАВЛЕНИЕ РЕСУРСАМИ ====================
 	closers   []func() error // closers - список функций для закрытия ресурсов. Каждый closer вызывается только один раз
@@ -45,19 +50,39 @@ func NewContainer(ctx context.Context, cfg *config.AppConfig) (*Container, error
 	}
 
 	// инициализируем логгер
-	if err := c.initLogger(ctx); err != nil {
+	err := c.initLogger(ctx)
+	if err != nil {
 		return nil, fmt.Errorf("init logger: %w", err)
 	}
 
 	log := c.logger
 	log.Info("starting DI container initialization")
 
-	// инициализация grpc клиента для сервиса user-service
-	if err := c.initGrpcUserClient(ctx); err != nil {
+	// 1. инициализация grpc клиента для сервиса user-service
+	err = c.initGrpcUserClient(ctx)
+	if err != nil {
 		c.Close()
-		return nil, fmt.Errorf("Failde to innit grpc user client: %w", err)
+
+		return nil, fmt.Errorf("Failed to innit grpc user client: %w", err)
+	}
+
+	// 2. инициализируем bot handler
+	err = c.initBotHandler(ctx)
+	if err != nil {
+		c.Close()
+
+		return nil, fmt.Errorf("Failed to innit bot http handler: %w", err)
+	}
+
+	// 3. инициализируем http botGateway
+	err = c.initBotGateway(ctx)
+	if err != nil {
+		c.Close()
+
+		return nil, fmt.Errorf("init http botGateway: %w", err)
 	}
 
 	log.Info("✅ DI container initialized successfully with single Kafka client")
+
 	return c, nil
 }
