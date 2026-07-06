@@ -18,7 +18,6 @@ type BotConfig struct {
 }
 
 func LoadBotConfig() (config *BotConfig, err error) {
-
 	// загружаем конфиг из .yml файла
 	botConfig, err := configs.LoadYAMLConfig[BotConfig](os.Getenv("BOT_CONFIG_ADDRESS_STRING"), UseDefaultBotConfig)
 	if err != nil {

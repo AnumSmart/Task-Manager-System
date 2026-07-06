@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"pkg/configs"
@@ -9,12 +10,12 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// путь к .env файлу
+// путь к .env файлу.
 const (
 	envPath = "c:\\Son_Alex\\GO_projects\\task_management_system\\apps\\telegram-bot\\.env"
 )
 
-// AppConfig объединяет все конфигурации сервиса
+// AppConfig объединяет все конфигурации сервиса.
 type AppConfig struct {
 	Bot          *BotConfig
 	BotServer    *BotHttpServerConfig
@@ -22,13 +23,13 @@ type AppConfig struct {
 	LoggerConfig *logger.LoggerConfig
 }
 
-// LoadAppConfig загружает все конфиги из указанного .env файла
+// LoadAppConfig загружает все конфиги из указанного .env файла.
 func LoadAppConfig(envPath string) (*AppConfig, error) {
 	config := &AppConfig{}
 
 	// проверяем наличие пути до файла .env
 	if envPath == "" {
-		return nil, fmt.Errorf("Error during loading config: empty env file path")
+		return nil, errors.New("Error during loading config: empty env file path")
 	}
 
 	err := godotenv.Load(envPath)
@@ -70,7 +71,7 @@ func LoadAppConfig(envPath string) (*AppConfig, error) {
 	return config, nil
 }
 
-// метод получения конфига логгера
+// метод получения конфига логгера.
 func (a *AppConfig) LoadLoggerConfig() (*logger.LoggerConfig, error) {
 	// проверка, что указан путь к .yml файлу
 	loggerConfigPath := os.Getenv("LOGGER_CONFIG_ADDRESS_STRING")

@@ -1,14 +1,14 @@
 package config
 
 import (
-	"fmt"
+	"errors"
 	"log"
 	"os"
 	"pkg/configs"
 	"time"
 )
 
-// конфиг для подключения к grpc клиенту
+// конфиг для подключения к grpc клиенту.
 type GrpcClientConfig struct {
 	Host        string        `mapstructure:"host"`
 	Port        string        `mapstructure:"port"`
@@ -17,9 +17,8 @@ type GrpcClientConfig struct {
 	Timeout     time.Duration `mapstructure:"timeout"`
 }
 
-// загружаем конфиг
+// загружаем конфиг.
 func LoadGrpcClientConfig() (*GrpcClientConfig, error) {
-
 	config, err := configs.LoadYAMLConfig[GrpcClientConfig](os.Getenv("USER_GRPC_CLIENT_CONFIG_ADDRESS_STRING"), LoadDefaultGrpcClientCOnfig)
 	if err != nil {
 		// Обрабатываем ошибку (файл есть, но не читается или не парсится)
@@ -44,24 +43,26 @@ func LoadDefaultGrpcClientCOnfig() *GrpcClientConfig {
 	}
 }
 
-// валидация конфига
+// валидация конфига.
 func (c *GrpcClientConfig) validate() error {
 	if c.Host == "" {
-		return fmt.Errorf("config validation: empty host")
+		return errors.New("config validation: empty host")
 	}
 
 	if c.Port == "" {
-		return fmt.Errorf("config validation: empty port")
+		return errors.New("config validation: empty port")
 	}
 
 	if c.ServiceKey == "some key" {
-		return fmt.Errorf("config validation: default service key")
+		return errors.New("config validation: default service key")
 	}
+
 	return nil
 }
 
-// метод получения полного адреса сервера
+// метод получения полного адреса сервера.
 func (c *GrpcClientConfig) GetAddress() string {
 	address := c.Host + ":" + c.Port
+
 	return address
 }

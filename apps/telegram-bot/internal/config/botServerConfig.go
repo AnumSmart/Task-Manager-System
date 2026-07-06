@@ -7,18 +7,19 @@ import (
 	"time"
 )
 
-// структрура конфига для сервиса сервера бота
+// структрура конфига для сервиса сервера бота.
 type BotHttpServerConfig struct {
 	// Встраиваем базовый конфиг HTTP сервера
 	// Это позволит использовать все поля host, port, timeout и т.д.
 	configs.HttpServerConfig `yaml:",inline"` // inline чтобы поля были на одном уровне, а не вложены
-	Mode                     string           `yaml:"mode"`    // "polling" или "webhook"
-	Polling                  PollingConfig    `yaml:"polling"` // Настройки для polling режима
-	Webhook                  WebhookConfig    `yaml:"webhook"` // Настройки для webhook режима
-	Limits                   LimitsConfig     `yaml:"limits"`  // Лимиты и ограничения
+
+	Mode    string        `yaml:"mode"`    // "polling" или "webhook"
+	Polling PollingConfig `yaml:"polling"` // Настройки для polling режима
+	Webhook WebhookConfig `yaml:"webhook"` // Настройки для webhook режима
+	Limits  LimitsConfig  `yaml:"limits"`  // Лимиты и ограничения
 }
 
-// PollingConfig - настройки для режима Long Polling
+// PollingConfig - настройки для режима Long Polling.
 type PollingConfig struct {
 	Enabled        bool          `yaml:"enabled"`         // Активен ли polling режим
 	Timeout        int           `yaml:"timeout"`         // Таймаут long polling в секундах
@@ -27,7 +28,7 @@ type PollingConfig struct {
 	RetryDelay     time.Duration `yaml:"retry_delay"`     // Задержка при ошибке
 }
 
-// WebhookConfig - настройки для режима Webhook
+// WebhookConfig - настройки для режима Webhook.
 type WebhookConfig struct {
 	Enabled        bool     `yaml:"enabled"`         // Активен ли webhook режим
 	URL            string   `yaml:"url"`             // Домен для вебхука
@@ -36,20 +37,20 @@ type WebhookConfig struct {
 	AllowedUpdates []string `yaml:"allowed_updates"` // Типы обновлений
 }
 
-// LimitsConfig - лимиты и ограничения бота
+// LimitsConfig - лимиты и ограничения бота.
 type LimitsConfig struct {
 	MaxMessageSize    int `yaml:"max_message_size"`   // Максимальный размер сообщения в символах
 	RateLimit         int `yaml:"rate_limit"`         // Сообщений в минуту на пользователя
 	ConcurrentWorkers int `yaml:"concurrent_workers"` // Количество одновременных обработчиков
 }
 
-// Вспомогательная структура для ошибок конфигурации
+// Вспомогательная структура для ошибок конфигурации.
 type ConfigError struct {
 	Field string
 	Msg   string
 }
 
-// метод вспомогательной функции для формирования ошибок
+// метод вспомогательной функции для формирования ошибок.
 func (e *ConfigError) Error() string {
 	return "config error in field '" + e.Field + "': " + e.Msg
 }
@@ -70,7 +71,7 @@ func LoadBotHttpServerConfig() (*BotHttpServerConfig, error) {
 	return config, nil
 }
 
-// Конструктор по умолчанию для TelegramBotConfig
+// Конструктор по умолчанию для TelegramBotConfig.
 func UseDefaultBotHttpServerConfig() *BotHttpServerConfig {
 	return &BotHttpServerConfig{
 		HttpServerConfig: *configs.UseDefaultServerConfig(), // Берем дефолты из базового конфига
@@ -101,7 +102,7 @@ func UseDefaultBotHttpServerConfig() *BotHttpServerConfig {
 	}
 }
 
-// Валидация конфига (опционально, но полезно)
+// Валидация конфига (опционально, но полезно).
 func (c *BotHttpServerConfig) Validate() error {
 	// Проверяем режим
 	if c.Mode != "polling" && c.Mode != "webhook" {
@@ -119,6 +120,7 @@ func (c *BotHttpServerConfig) Validate() error {
 				Msg:   "must be true when mode = 'polling'",
 			}
 		}
+
 		if c.Polling.Timeout <= 0 {
 			return &ConfigError{
 				Field: "polling.timeout",
@@ -134,12 +136,14 @@ func (c *BotHttpServerConfig) Validate() error {
 				Msg:   "must be true when mode = 'webhook'",
 			}
 		}
+
 		if c.Webhook.URL == "" {
 			return &ConfigError{
 				Field: "webhook.url",
 				Msg:   "cannot be empty in webhook mode",
 			}
 		}
+
 		if c.Webhook.MaxConnections <= 0 {
 			return &ConfigError{
 				Field: "webhook.max_connections",
