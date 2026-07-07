@@ -68,7 +68,7 @@ func (c *Container) initGrpcUserClient(ctx context.Context) error {
 func (c *Container) initBotHandler(ctx context.Context) error {
 	c.logger.Info("initializing http bot handler")
 
-	botHttpHandler, err := handlers.NewBotHttpHandler()
+	botHttpHandler, err := handlers.NewBotHttpHandler(c.botGateway.GetBot())
 	if err != nil {
 		return err
 	}
