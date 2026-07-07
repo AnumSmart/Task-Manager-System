@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"runtime/debug"
 	"sync"
+	"sync/atomic"
 	"telegram-bot/internal/config"
 	"telegram-bot/internal/server/handlers"
 	"time"
@@ -24,14 +26,22 @@ type PollingBotManager struct {
 	botCancel context.CancelFunc // функция отмены
 	stopChan  chan struct{}      // канал для остановки
 
-	isRunning bool
+	isRunning atomic.Bool
 	mu        sync.RWMutex
+
+	//============== элементы workerpool ===================
+	workChan   chan tele.Context // канал для задач
+	errChan    chan error        // канал для ошибок при обработке обновлений
+	numWorkers int               // количество воркеров
 }
 
 // NewPollingBotManager - конструктор менеджера бота.
 func NewPollingBotManager(
 	botConfig *config.BotConfig,
 	handler *handlers.BotHttpHandler,
+	numWorkers int,
+	taskBuff int,
+	errBuff int,
 ) (*PollingBotManager, error) {
 	// Настройки бота
 	pref := tele.Settings{
@@ -52,6 +62,9 @@ func NewPollingBotManager(
 		handler:     handler,
 		config:      botConfig,
 		stopChan:    make(chan struct{}),
+		workChan:    make(chan tele.Context, taskBuff), // буферизированный канал задач
+		errChan:     make(chan error, errBuff),         // буферизированный канал для ошибок
+		numWorkers:  numWorkers,
 	}, nil
 }
 
@@ -60,12 +73,18 @@ func (m *PollingBotManager) Start() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.isRunning {
+	if m.isRunning.Load() {
 		return errors.New("bot already running")
 	}
 
 	// Создаём контекст для управления ботом
 	m.botCtx, m.botCancel = context.WithCancel(context.Background())
+
+	// запускаем воркеры, которые будут обрабатывать поступающие сообщения
+	for i := 0; i < m.numWorkers; i++ {
+		m.botWg.Add(1)
+		go m.worker()
+	}
 
 	// Регистрируем обработчики
 	m.registerHandlers()
@@ -74,11 +93,58 @@ func (m *PollingBotManager) Start() error {
 	m.botWg.Add(1)
 	go m.run()
 
-	m.isRunning = true
+	// Запускаем обработчик ошибок
+	m.botWg.Add(1)
+	go m.errorHandler()
+
+	m.isRunning.CompareAndSwap(false, true)
 
 	log.Println("✅ Long polling бот запущен")
 
 	return nil
+}
+
+// воркер для обаботки задачи
+func (m *PollingBotManager) worker() {
+	defer m.botWg.Done()
+
+	for {
+		select {
+		case <-m.botCtx.Done():
+			return
+		case update := <-m.workChan:
+			// обрабатываем обновление
+			// тут нужно определить какой хэндлер нужно выбрать
+			err := m.processUpdate(update)
+			if err != nil {
+				// Отправляем ошибку в канал ошибок
+				select {
+				case m.errChan <- err:
+				case <-m.botCtx.Done():
+					return
+				default:
+					// Если канал ошибок переполнен, логируем локально
+					log.Printf("⚠️ Error channel full, logging error: %v", err)
+				}
+			}
+		}
+	}
+}
+
+func (m *PollingBotManager) errorHandler() {
+	defer m.botWg.Done()
+
+	for {
+		select {
+		case <-m.botCtx.Done():
+			return
+		case err := <-m.errChan:
+			if err != nil {
+				log.Printf("⚠️ Worker error: %v", err)
+				// Здесь можно добавить метрики, алерты и т.д.
+			}
+		}
+	}
 }
 
 // Stop - остановка бота.
@@ -86,7 +152,7 @@ func (m *PollingBotManager) Stop(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if !m.isRunning {
+	if !m.isRunning.Load() {
 		return nil
 	}
 
@@ -116,42 +182,14 @@ func (m *PollingBotManager) Stop(ctx context.Context) error {
 
 	// Закрываем канал остановки
 	close(m.stopChan)
-	m.isRunning = false
+	m.isRunning.CompareAndSwap(true, false)
 
 	return nil
 }
 
 // IsRunning - проверка, запущен ли бот.
 func (m *PollingBotManager) IsRunning() bool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	return m.isRunning
-}
-
-// registerHandlers - регистрация обработчиков бота.
-func (m *PollingBotManager) registerHandlers() {
-	// Обработка callback-запросов от inline клавиатур
-	m.telegramBot.Handle(tele.OnCallback, func(c tele.Context) error {
-		return m.handler.HandleBotCallback(c)
-	})
-
-	// Обработка всех текстовых сообщений
-	m.telegramBot.Handle(tele.OnText, func(c tele.Context) error {
-		return m.handler.HandleBotMessage(c)
-	})
-
-	// Обработка команды /start
-	m.telegramBot.Handle("/start", func(c tele.Context) error {
-		return m.handler.HandleBotStart(c)
-	})
-
-	// Обработка команды /help
-	m.telegramBot.Handle("/help", func(c tele.Context) error {
-		return m.handler.HandleBotHelp(c)
-	})
-
-	log.Println("📝 Обработчики бота зарегистрированы")
+	return m.isRunning.Load()
 }
 
 // run - основной цикл бота (запускается в горутине).
@@ -181,4 +219,77 @@ func (m *PollingBotManager) run() {
 // GetBot - получить экземпляр бота (если нужно).
 func (m *PollingBotManager) GetBot() *tele.Bot {
 	return m.telegramBot
+}
+
+func (m *PollingBotManager) processUpdate(c tele.Context) (err error) {
+	// Определяем тип обновления и вызываем соответствующий метод хендлера
+	// Защита от паник на уровне всего метода
+	defer func() {
+		if r := recover(); r != nil {
+			// Логируем панику
+			log.Printf("🔥 PANIC in processUpdate: %v", r)
+			log.Printf("Stack trace: %s", debug.Stack())
+
+			// Отправляем сообщение пользователю
+			if c != nil && c.Chat() != nil {
+				c.Send("⚠️ Произошла внутренняя ошибка. Администраторы уже уведомлены.")
+			}
+
+			// Превращаем панику в ошибку
+			err = fmt.Errorf("panic recovered: %v", r)
+		}
+	}()
+
+	// Проверяем, что контекст не nil
+    if c == nil {
+        return fmt.Errorf("context is nil")
+    }
+
+	// Проверяем, является ли сообщение командой
+	if c.Message() != nil && c.Message().Text != "" {
+		text := c.Message().Text
+
+		// Проверяем команды
+		switch {
+		case text == "/start":
+			return m.handler.ProcessStart(
+				context.Background(),
+				c.Chat().ID,
+				c.Sender().ID,
+			)
+		case text == "/help":
+			return m.handler.ProcessHelp(
+				context.Background(),
+				c.Chat().ID,
+				c.Sender().ID,
+			)
+		default:
+			// Обычное текстовое сообщение
+			return m.handler.ProcessMessage(
+				context.Background(),
+				c.Chat().ID,
+				c.Sender().ID,
+				text,
+			)
+		}
+	}
+
+	// Проверяем callback
+	if c.Callback() != nil {
+		return m.handler.ProcessCallback(
+			context.Background(),
+			c.Chat().ID,
+			c.Sender().ID,
+			c.Callback().ID,
+			c.Callback().Data,
+			c.Callback().Message.ID,
+		)
+	}
+
+	// Если ничего не подошло
+	return m.handler.ProcessUnknown(
+		context.Background(),
+		c.Chat().ID,
+		c.Sender().ID,
+	)
 }

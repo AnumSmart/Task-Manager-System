@@ -12,6 +12,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	numWorkers     = 10  // количество воркеров
+	taskChanBuffer = 100 // размер буфера канала задач
+	errChanBuffer  = 100 // размер буфера канала ошибок
+)
+
 // BotGateway - HTTP сервер для ботов.
 type BotGateway struct {
 	httpServer *http.Server                // базовый сервер из пакета http
@@ -52,7 +58,7 @@ func NewBotGateway(ctx context.Context, config *config.BotHttpServerConfig,
 
 	// Создаём менеджер бота (если нужен polling)
 	if config.Mode == "polling" {
-		botManager, err := NewPollingBotManager(botConf, handler)
+		botManager, err := NewPollingBotManager(botConf, handler, numWorkers, taskChanBuffer, errChanBuffer)
 		if err != nil {
 			return nil, fmt.Errorf("create polling bot manager: %w", err)
 		}
@@ -135,6 +141,23 @@ func (a *BotGateway) Shutdown(ctx context.Context) error {
 	return nil
 }
 
+// ForceStop
+func (a *BotGateway) ForceStop(ctx context.Context) {
+	log.Println("🛑 BotGateway Force stop...")
+	if a.httpServer != nil {
+		a.httpServer.Close()
+	}
+
+	if a.PollingBotManager != nil {
+		log.Println("⏹️ Останавливаем Telegram бота...")
+
+		err := a.Stop(ctx)
+		if err != nil {
+			log.Printf("⚠️ Bot stop error: %v", err)
+		}
+	}
+}
+
 // healthCheck - проверка состояния.
 func (a *BotGateway) healthCheck(c *gin.Context) {
 	status := map[string]any{
@@ -202,6 +225,7 @@ func (a *BotGateway) startBot(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "bot started"})
 }
 
+// геттер для получения порта
 func (a *BotGateway) GetPort() string {
 	return a.config.Port
 }
