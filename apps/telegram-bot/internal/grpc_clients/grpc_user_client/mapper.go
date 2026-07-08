@@ -15,7 +15,7 @@ func NewUserMapper() *UserMapper {
 
 // ===== Конвертация User =====
 
-// ToBotUser - конвертирует common.v1.User в доменную модель бота
+// ToBotUser - конвертирует common.v1.User в доменную модель бота.
 func (m *UserMapper) ToBotUser(pbUser *commonpb.User) *domain.BotUser {
 	if pbUser == nil {
 		return nil
@@ -32,75 +32,78 @@ func (m *UserMapper) ToBotUser(pbUser *commonpb.User) *domain.BotUser {
 	}
 
 	var lastLoginAt *time.Time
-	if pbUser.LastLoginAt != nil {
-		t := pbUser.LastLoginAt.AsTime()
+
+	if pbUser.GetLastLoginAt() != nil {
+		t := pbUser.GetLastLoginAt().AsTime()
 		lastLoginAt = &t
 	}
 
 	return &domain.BotUser{
-		ID:               pbUser.Id,
-		Email:            pbUser.Email,
+		ID:               pbUser.GetId(),
+		Email:            pbUser.GetEmail(),
 		TelegramID:       telegramID,
 		TelegramUsername: telegramUsername,
-		Role:             m.toDomainRole(pbUser.Role),
-		Status:           m.toDomainStatus(pbUser.Status),
-		FullName:         pbUser.FullName,
-		CreatedAt:        pbUser.CreatedAt.AsTime(),
-		UpdatedAt:        pbUser.UpdatedAt.AsTime(),
+		Role:             m.toDomainRole(pbUser.GetRole()),
+		Status:           m.toDomainStatus(pbUser.GetStatus()),
+		FullName:         pbUser.GetFullName(),
+		CreatedAt:        pbUser.GetCreatedAt().AsTime(),
+		UpdatedAt:        pbUser.GetUpdatedAt().AsTime(),
 		LastLoginAt:      lastLoginAt,
 	}
 }
 
-// ToBotUsers - конвертирует список пользователей
+// ToBotUsers - конвертирует список пользователей.
 func (m *UserMapper) ToBotUsers(pbUsers []*commonpb.User) []*domain.BotUser {
 	if len(pbUsers) == 0 {
 		return []*domain.BotUser{}
 	}
 
 	result := make([]*domain.BotUser, 0, len(pbUsers))
+
 	for _, pbUser := range pbUsers {
 		if user := m.ToBotUser(pbUser); user != nil {
 			result = append(result, user)
 		}
 	}
+
 	return result
 }
 
 // ===== Конвертация Organization =====
 
-// ToBotOrganization - конвертирует common.v1.Organization в доменную модель
+// ToBotOrganization - конвертирует common.v1.Organization в доменную модель.
 func (m *UserMapper) ToBotOrganization(pbOrg *commonpb.Organization) *domain.BotOrganization {
 	if pbOrg == nil {
 		return nil
 	}
 
 	return &domain.BotOrganization{
-		ID:        pbOrg.Id,
-		Name:      pbOrg.Name,
-		IsActive:  pbOrg.IsActive,
-		CreatedAt: pbOrg.CreatedAt.AsTime(),
-		UpdatedAt: pbOrg.UpdatedAt.AsTime(),
-		OwnerID:   pbOrg.OwnerId,
+		ID:        pbOrg.GetId(),
+		Name:      pbOrg.GetName(),
+		IsActive:  pbOrg.GetIsActive(),
+		CreatedAt: pbOrg.GetCreatedAt().AsTime(),
+		UpdatedAt: pbOrg.GetUpdatedAt().AsTime(),
+		OwnerID:   pbOrg.GetOwnerId(),
 	}
 }
 
 // ===== Конвертация JWT =====
 
-// ToJWTInfo - конвертирует ответ привязки Telegram
+// ToJWTInfo - конвертирует ответ привязки Telegram.
 func (m *UserMapper) ToJWTInfo(resp *userpb.LinkTelegramResponse) *domain.JWTInfo {
-	if resp == nil || !resp.Success {
+	if resp == nil || !resp.GetSuccess() {
 		return nil
 	}
 
 	return &domain.JWTInfo{
-		Token:        resp.JwtToken,
-		RefreshToken: resp.RefreshToken,
-		ExpiresIn:    resp.ExpiresIn,
-		Claims:       m.ToJWTClaims(resp.Claims),
+		Token:        resp.GetJwtToken(),
+		RefreshToken: resp.GetRefreshToken(),
+		ExpiresIn:    resp.GetExpiresIn(),
+		Claims:       m.ToJWTClaims(resp.GetClaims()),
 	}
 }
 
-// ToJWTClaims - конвертирует common.v1.JWTClaims в доменную модель
+// ToJWTClaims - конвертирует common.v1.JWTClaims в доменную модель.
 func (m *UserMapper) ToJWTClaims(pbClaims *commonpb.JWTClaims) *domain.JWTClaims {
 	if pbClaims == nil {
 		return nil
@@ -112,30 +115,30 @@ func (m *UserMapper) ToJWTClaims(pbClaims *commonpb.JWTClaims) *domain.JWTClaims
 	}
 
 	return &domain.JWTClaims{
-		UserID:         pbClaims.UserId,
-		Email:          pbClaims.Email,
-		Role:           m.toDomainRole(pbClaims.Role),
-		OrganizationID: pbClaims.OrganizationId,
+		UserID:         pbClaims.GetUserId(),
+		Email:          pbClaims.GetEmail(),
+		Role:           m.toDomainRole(pbClaims.GetRole()),
+		OrganizationID: pbClaims.GetOrganizationId(),
 		TelegramID:     telegramID,
-		TokenID:        pbClaims.TokenId,
-		IssuedAt:       pbClaims.IssuedAt,
-		ExpiresAt:      pbClaims.ExpiresAt,
+		TokenID:        pbClaims.GetTokenId(),
+		IssuedAt:       pbClaims.GetIssuedAt(),
+		ExpiresAt:      pbClaims.GetExpiresAt(),
 	}
 }
 
 // ===== Конвертация Pagination =====
 
-// ToPagination - конвертирует common.v1.Pagination
+// ToPagination - конвертирует common.v1.Pagination.
 func (m *UserMapper) ToPagination(pbPagination *commonpb.Pagination) *Pagination {
 	if pbPagination == nil {
 		return nil
 	}
 
 	return &Pagination{
-		Page:       pbPagination.Page,
-		PageSize:   pbPagination.PageSize,
-		Total:      pbPagination.Total,
-		TotalPages: pbPagination.TotalPages,
+		Page:       pbPagination.GetPage(),
+		PageSize:   pbPagination.GetPageSize(),
+		Total:      pbPagination.GetTotal(),
+		TotalPages: pbPagination.GetTotalPages(),
 	}
 }
 
@@ -167,7 +170,7 @@ func (m *UserMapper) toDomainStatus(status commonpb.UserStatus) domain.UserStatu
 	}
 }
 
-// Обратная конвертация (Domain → gRPC) - если нужно отправлять запросы
+// Обратная конвертация (Domain → gRPC) - если нужно отправлять запросы.
 func (m *UserMapper) ToGRPCRole(role domain.UserRole) commonpb.Role {
 	switch role {
 	case domain.RoleOwner:
@@ -196,7 +199,7 @@ func (m *UserMapper) ToGRPCStatus(status domain.UserStatus) commonpb.UserStatus 
 
 // ===== Дополнительные структуры =====
 
-// Pagination - модель пагинации для бота
+// Pagination - модель пагинации для бота.
 type Pagination struct {
 	Page       int32
 	PageSize   int32
