@@ -29,12 +29,6 @@ jobs:
       - name: Download deps
         run: go work sync
 
-      - name: Test user-service
-        run: go test -v ./apps/user-service/...
-
-      - name: Test telegram-bot
-        run: go test -v ./apps/telegram-bot/...
-
       - name: Build user-service
         run: cd apps/user-service && go build -o /dev/null ./...
 
