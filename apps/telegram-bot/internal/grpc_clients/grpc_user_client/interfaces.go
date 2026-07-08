@@ -5,7 +5,7 @@ import (
 	"context"
 )
 
-// Полный интерфейс (опционально)
+// Полный интерфейс (опционально).
 type FullUserGrpcService interface {
 	PublicUserService
 	UserProfileService
@@ -13,7 +13,7 @@ type FullUserGrpcService interface {
 	OrganizationService
 }
 
-// 1. Базовые операции (публичные методы)
+// 1. Базовые операции (публичные методы).
 type PublicUserService interface {
 	SetupInitialOrganization(ctx context.Context, req *pb.SetupInitialOrganizationRequest) (*pb.SetupInitialOrganizationResponse, error)
 	LinkTelegram(ctx context.Context, req *pb.LinkTelegramRequest) (*pb.LinkTelegramResponse, error)
@@ -21,14 +21,14 @@ type PublicUserService interface {
 	Close() error
 }
 
-// 2. Профиль пользователя
+// 2. Профиль пользователя.
 type UserProfileService interface {
 	GetMyProfile(ctx context.Context, req *pb.GetMyProfileRequest) (*pb.GetUserResponse, error)
 	UpdateMyProfile(ctx context.Context, req *pb.UpdateMyProfileRequest) (*pb.GetUserResponse, error)
 	Logout(ctx context.Context, req *pb.LogoutRequest) (*pb.LogoutResponse, error)
 }
 
-// 3. Управление пользователями (админские функции)
+// 3. Управление пользователями (админские функции).
 type UserManagementService interface {
 	CreateUser(ctx context.Context, req *pb.CreateUserRequest) (*pb.CreateUserResponse, error)
 	GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.GetUserResponse, error)
@@ -37,7 +37,7 @@ type UserManagementService interface {
 	ListUsers(ctx context.Context, req *pb.ListUsersRequest) (*pb.ListUsersResponse, error)
 }
 
-// 4. Организация
+// 4. Организация.
 type OrganizationService interface {
 	GetOrganization(ctx context.Context, req *pb.GetOrganizationRequest) (*pb.GetOrganizationResponse, error)
 }
