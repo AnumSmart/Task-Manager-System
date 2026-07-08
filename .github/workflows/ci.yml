@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('go.work', '**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download deps
+        run: go work sync
+
+      - name: Test user-service
+        run: go test -v ./apps/user-service/...
+
+      - name: Test telegram-bot
+        run: go test -v ./apps/telegram-bot/...
+
+      - name: Build user-service
+        run: cd apps/user-service && go build -o /dev/null ./...
+
+      - name: Build telegram-bot
+        run: cd apps/telegram-bot && go build -o /dev/null ./...
