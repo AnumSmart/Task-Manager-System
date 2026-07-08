@@ -28,3 +28,6 @@ jobs:
 
       - name: Download deps
         run: go work sync
+
+      - name: Test pkg
+        run: go test -v ./pkg/configs
