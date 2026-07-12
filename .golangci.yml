@@ -1,0 +1,64 @@
+version: '2'
+
+linters:
+  default: all
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - revive
+    - gosec
+    - misspell
+    - gomodguard_v2
+    - wsl_v5
+  settings:
+    errcheck:
+      check-type-assertions: true
+    revive:
+      severity: warning
+    wsl_v5:
+      allow-first-in-block: true
+      allow-whole-block: false
+      branch-max-lines: 2
+    depguard:
+      rules:
+        main:
+          allow:
+            - '$gostd'
+            - 'github.com/.*'
+            - 'google.golang.org/.*'
+            - 'gopkg.in/.*'
+            - 'pkg/.*'
+            - 'telegram-bot/.*'
+            - 'api/.*'
+          files:
+            - '.*'
+          list-type: allow
+  exclusions:
+    generated: lax
+    rules:
+      - path: _test\.go
+        linters:
+          - gocyclo
+          - errcheck
+          - gosec
+
+run:
+  timeout: 5m
+  tests: true
+
+output:
+  print-issued-lines: true
+
+issues:
+  exclude-rules:
+    - linters:
+        - exhaustruct
+        - varnamelen
+        - nlreturn
+        - wsl
+        - godox
+      text: '.*'
+    - linters:
+        - tagliatelle
+      source: '.*yaml:.*'
