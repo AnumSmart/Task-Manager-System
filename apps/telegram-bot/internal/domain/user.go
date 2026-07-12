@@ -7,7 +7,7 @@ import (
 )
 
 // BotUser - модель пользователя для телеграм бота
-// Использует те же enum'ы, что и в common.v1
+// Использует те же enum'ы, что и в common.v1.
 type BotUser struct {
 	ID               string
 	Email            string
@@ -21,7 +21,7 @@ type BotUser struct {
 	LastLoginAt      *time.Time
 }
 
-// UserRole - соответствует common.v1.Role
+// UserRole - соответствует common.v1.Role.
 type UserRole string
 
 const (
@@ -31,7 +31,7 @@ const (
 	RoleEmployee    UserRole = "ROLE_EMPLOYEE"
 )
 
-// UserStatus - соответствует common.v1.UserStatus
+// UserStatus - соответствует common.v1.UserStatus.
 type UserStatus string
 
 const (
@@ -41,7 +41,7 @@ const (
 	UserStatusSuspended   UserStatus = "USER_STATUS_SUSPENDED"
 )
 
-// BotOrganization - упрощенная модель организации
+// BotOrganization - упрощенная модель организации.
 type BotOrganization struct {
 	ID        string
 	Name      string
@@ -51,7 +51,7 @@ type BotOrganization struct {
 	OwnerID   string
 }
 
-// JWTInfo - информация о JWT токене
+// JWTInfo - информация о JWT токене.
 type JWTInfo struct {
 	Token        string
 	RefreshToken string
@@ -59,7 +59,7 @@ type JWTInfo struct {
 	Claims       *JWTClaims
 }
 
-// JWTClaims - соответствует common.v1.JWTClaims
+// JWTClaims - соответствует common.v1.JWTClaims.
 type JWTClaims struct {
 	UserID         string
 	Email          string
@@ -90,9 +90,11 @@ func (u *BotUser) LinkTelegram(telegramID int64, username *string) error {
 	if u.IsTelegramLinked() {
 		return errors.New("telegram already linked")
 	}
+
 	if !u.IsActive() {
 		return errors.New("cannot link telegram: user is not active")
 	}
+
 	if telegramID <= 0 {
 		return errors.New("invalid telegram id")
 	}
@@ -100,6 +102,7 @@ func (u *BotUser) LinkTelegram(telegramID int64, username *string) error {
 	u.TelegramID = &telegramID
 	u.TelegramUsername = username
 	u.UpdatedAt = time.Now()
+
 	return nil
 }
 
@@ -107,9 +110,11 @@ func (u *BotUser) UnlinkTelegram() error {
 	if !u.IsTelegramLinked() {
 		return errors.New("telegram not linked")
 	}
+
 	u.TelegramID = nil
 	u.TelegramUsername = nil
 	u.UpdatedAt = time.Now()
+
 	return nil
 }
 
@@ -117,10 +122,13 @@ func (u *BotUser) UpdateProfile(fullName string) error {
 	if strings.TrimSpace(fullName) == "" {
 		return errors.New("full name cannot be empty")
 	}
+
 	if len(fullName) > 100 {
 		return errors.New("full name too long (max 100 chars)")
 	}
+
 	u.FullName = fullName
 	u.UpdatedAt = time.Now()
+
 	return nil
 }

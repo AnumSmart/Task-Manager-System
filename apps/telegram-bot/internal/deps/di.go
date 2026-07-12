@@ -66,20 +66,20 @@ func NewContainer(ctx context.Context, cfg *config.AppConfig) (*Container, error
 		return nil, fmt.Errorf("Failed to innit grpc user client: %w", err)
 	}
 
-	// 2. инициализируем bot handler
-	err = c.initBotHandler(ctx)
-	if err != nil {
-		c.Close()
-
-		return nil, fmt.Errorf("Failed to innit bot http handler: %w", err)
-	}
-
-	// 3. инициализируем http botGateway
+	// 2. инициализируем http botGateway
 	err = c.initBotGateway(ctx)
 	if err != nil {
 		c.Close()
 
 		return nil, fmt.Errorf("init http botGateway: %w", err)
+	}
+
+	// 3. инициализируем bot handler
+	err = c.initBotHandler(ctx)
+	if err != nil {
+		c.Close()
+
+		return nil, fmt.Errorf("Failed to innit bot http handler: %w", err)
 	}
 
 	log.Info("✅ DI container initialized successfully with single Kafka client")

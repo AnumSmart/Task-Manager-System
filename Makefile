@@ -83,22 +83,63 @@ user_service_start:
 	echo "[INFO] Starting user-service"
 	go run -C $(USER_SERVICE_CMD_PATH) .
 
-# Показать все доступные команды
+# ===============================================
+# Линтер
+# ===============================================
+.PHONY: lint lint-fix lint-user lint-fix-user lint-telegram lint-fix-telegram
+
+lint: lint-user lint-telegram
+	@echo "[OK] Lint all services completed"
+
+lint-fix: lint-fix-user lint-fix-telegram
+	@echo "[OK] Lint and fix all services completed"
+
+lint-user:
+	@echo "[INFO] Running linter for user-service..."
+	golangci-lint run apps/user-service/...
+	@echo "[OK] Linter for user-service completed"
+
+lint-fix-user:
+	@echo "[INFO] Running linter with --fix for user-service..."
+	golangci-lint run --fix apps/user-service/...
+	@echo "[OK] Linter with --fix for user-service completed"
+
+lint-telegram:
+	@echo "[INFO] Running linter for telegram-bot..."
+	golangci-lint run apps/telegram-bot/...
+	@echo "[OK] Linter for telegram-bot completed"
+
+lint-fix-telegram:
+	@echo "[INFO] Running linter with --fix for telegram-bot..."
+	golangci-lint run --fix apps/telegram-bot/...
+	@echo "[OK] Linter with --fix for telegram-bot completed"
+
+# ===============================================
+# Помощь
+# ===============================================
 .PHONY: help
 help:
 	@echo "Available commands:"
 	@echo ""
 	@echo "Main commands:"
-	@echo "  make up												              - Start all containers (user-service + rabbitmq)"
-	@echo "  make down												            - Stop all containers (user-service + rabbitmq)"
-	@echo "  make status										              - Staus for all containers (user-service + rabbitmq)"
-	@echo "  make user_service_containers_up              - Start all containers (for user-service)"
-	@echo "  make user_service_containers_down            - Stop all containers (for user-service)"
-	@echo "  make user_service_containers_status          - Status for all containers (for user-service)"
-	@echo "  make rabbitmq_container_up                   - Start RabbitMQ container"
-	@echo "  make rabbitmq_container_down                 - Stop RabbitMQ container"
-	@echo "  make rabbitmq_container_status               - Status for RabbitMQ container"
-	@echo "  make user_service_start                      - Start of user-service"
+	@echo "  make up												        - Start all containers (user-service + rabbitmq)"
+	@echo "  make down												      - Stop all containers (user-service + rabbitmq)"
+	@echo "  make status										        - Status for all containers (user-service + rabbitmq)"
+	@echo "  make user_service_containers_up        - Start all containers (for user-service)"
+	@echo "  make user_service_containers_down      - Stop all containers (for user-service)"
+	@echo "  make user_service_containers_stat      - Status for all containers (for user-service)"
+	@echo "  make rabbitmq_container_up             - Start RabbitMQ container"
+	@echo "  make rabbitmq_container_down           - Stop RabbitMQ container"
+	@echo "  make rabbitmq_container_status         - Status for RabbitMQ container"
+	@echo "  make user_service_start                - Start of user-service"
+	@echo ""
+	@echo "Linter commands:"
+	@echo "  make lint                              - Run linter for all services"
+	@echo "  make lint-fix                          - Run linter with --fix for all services"
+	@echo "  make lint-user                         - Run linter for user-service only"
+	@echo "  make lint-fix-user                     - Run linter with --fix for user-service only"
+	@echo "  make lint-telegram                     - Run linter for telegram-bot only"
+	@echo "  make lint-fix-telegram                 - Run linter with --fix for telegram-bot only"
 
 
 

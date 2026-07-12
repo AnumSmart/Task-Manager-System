@@ -53,7 +53,7 @@ func (c *GrpcClientConfig) validate() error {
 		return errors.New("config validation: empty port")
 	}
 
-	if c.ServiceKey == "some key" {
+	if c.ServiceKey == "" {
 		return errors.New("config validation: default service key")
 	}
 

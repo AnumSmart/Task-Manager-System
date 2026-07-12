@@ -3,7 +3,8 @@ package config
 import (
 	"fmt"
 	"os"
-	"pkg/configs"
+
+	"gopkg.in/yaml.v2"
 )
 
 type BotConfig struct {
@@ -17,21 +18,19 @@ type BotConfig struct {
 	Environment string `yaml:"environment"`
 }
 
+// ручной анмаршалинг, чтобы брать переменную токена из env
 func LoadBotConfig() (config *BotConfig, err error) {
-	// загружаем конфиг из .yml файла
-	botConfig, err := configs.LoadYAMLConfig[BotConfig](os.Getenv("BOT_CONFIG_ADDRESS_STRING"), UseDefaultBotConfig)
+	data, err := os.ReadFile("c:\\Son_Alex\\GO_projects\\task_management_system\\apps\\telegram-bot\\yml-configs\\botConfig.yml")
+
 	if err != nil {
-		return nil, fmt.Errorf("Error during loading config: %s\n", err.Error())
+		return nil, fmt.Errorf("read config: %w", err)
 	}
 
-	return botConfig, nil
-}
-
-func UseDefaultBotConfig() *BotConfig {
-	return &BotConfig{
-		BotToken:    "123456:ABC",
-		WebhookURL:  "https://example.com/webhook",
-		WebhookPort: "8080",
-		Environment: "production",
+	var cfg BotConfig
+	err = yaml.Unmarshal(data, &cfg)
+	if err != nil {
+		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
+	cfg.BotToken = os.ExpandEnv(cfg.BotToken) // заменит ${BOT_TOKEN} на значение из окружения
+	return &cfg, nil
 }

@@ -53,30 +53,15 @@ func (c *Container) initGrpcUserClient(ctx context.Context) error {
 
 	// Добавляем в closers
 	c.addCloser(func() error {
-		c.userGrpcClient.Close()
+		if c.userGrpcClient != nil {
+			c.userGrpcClient.Close()
+		}
 		c.logger.Info("grpc user client resources cleaned up")
-
 		return nil
 	})
 
 	c.logger.Info("✅ GRPC User Client initialized")
 
-	return nil
-}
-
-// метод инициализации http bot handler
-func (c *Container) initBotHandler(ctx context.Context) error {
-	c.logger.Info("initializing http bot handler")
-
-	botHttpHandler, err := handlers.NewBotHttpHandler(c.botGateway.GetBot())
-	if err != nil {
-		return err
-	}
-
-	// если все успешно, то переопределяем контейнер
-	c.botHandler = botHttpHandler
-
-	c.logger.Info("✅ Bot HTTP Handler initialized")
 	return nil
 }
 
@@ -93,15 +78,33 @@ func (c *Container) initBotGateway(ctx context.Context) error {
 
 	// Добавляем в closers
 	c.addCloser(func() error {
-		err := c.botGateway.Shutdown(ctx)
-		if err != nil {
-			return fmt.Errorf("botGateway shutdown - failed:%w", err)
+		if c.botGateway != nil {
+			err := c.botGateway.Shutdown(ctx)
+			if err != nil {
+				return fmt.Errorf("botGateway shutdown - failed:%w", err)
+			}
 		}
 		c.logger.Info("botGateway resources cleaned up")
 		return nil
 	})
 
 	c.logger.Info("✅ HTTP BotGateway initialized")
+	return nil
+}
+
+// метод инициализации http bot handler
+func (c *Container) initBotHandler(ctx context.Context) error {
+	c.logger.Info("initializing http bot handler")
+
+	botHttpHandler, err := handlers.NewBotHttpHandler(c.botGateway.GetBot())
+	if err != nil {
+		return err
+	}
+
+	// если все успешно, то переопределяем контейнер
+	c.botHandler = botHttpHandler
+
+	c.logger.Info("✅ Bot HTTP Handler initialized")
 	return nil
 }
 
