@@ -1,0 +1,49 @@
+# deployments/elk/docker-compose.yml
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${ES_VERSION}
+    container_name: elk-elasticsearch
+    environment:
+      - node.name=${ES_NODE_NAME}
+      - cluster.name=${ES_CLUSTER_NAME}
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - 'ES_JAVA_OPTS=-Xms${ES_MEMORY} -Xmx${ES_MEMORY}'
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - xpack.security.transport.ssl.enabled=false
+    ports:
+      - '${ES_PORT}:9200'
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+      # Если нужны кастомные настройки:
+      # - ./elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+    networks:
+      - elk-network
+    restart: unless-stopped
+
+  # Опционально: Kibana для визуализации логов
+  kibana:
+    image: docker.elastic.co/kibana/kibana:${KIBANA_VERSION}
+    container_name: elk-kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_REQUEST_TIMEOUT=30000
+      - SERVER_HOST=0.0.0.0
+    ports:
+      - '${KIBANA_PORT}:5601'
+    depends_on:
+      - elasticsearch
+    networks:
+      - elk-network
+    restart: unless-stopped
+
+volumes:
+  elasticsearch-data:
+    driver: local
+
+networks:
+  elk-network:
+    driver: bridge
