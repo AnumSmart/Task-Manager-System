@@ -2,8 +2,10 @@ package logger
 
 import (
 	"context"
+	"log"
 	"log/slog"
 	"os"
+	"pkg/elk"
 	"sync"
 )
 
@@ -22,6 +24,7 @@ const (
 var (
 	globalLogger *slog.Logger
 	once         sync.Once
+	elkClient    *elk.Client // опционально сохраняем клиент для управления
 )
 
 // InitLogger - инициализация глобального логгера для микросервиса
@@ -57,21 +60,53 @@ func NewLoggerFromConfig(cfg *LoggerConfig) *slog.Logger {
 		AddSource: cfg.AddSource,
 	}
 
-	var handler slog.Handler
+	var baseHandler slog.Handler
 	if cfg.Format == "json" {
-		handler = slog.NewJSONHandler(os.Stdout, opts)
+		baseHandler = slog.NewJSONHandler(os.Stdout, opts)
 	} else {
-		handler = slog.NewTextHandler(os.Stdout, opts)
+		baseHandler = slog.NewTextHandler(os.Stdout, opts)
 	}
 
 	// Добавляем service как константное поле для всех логов
 	if cfg.Service != "" && cfg.Service != "unknown" {
-		handler = handler.WithAttrs([]slog.Attr{
+		baseHandler = baseHandler.WithAttrs([]slog.Attr{
 			slog.String("service", cfg.Service),
 		})
 	}
 
-	return slog.New(handler)
+	// 3. Если включен Elasticsearch, создаем дополнительный хендлер
+	if cfg.Elk != nil && cfg.Elk.Enabled {
+		client, err := elk.NewClient(cfg.Elk)
+		if err != nil {
+			// Логируем ошибку через базовый хендлер
+			log.Println("failed to create elk client!")
+		} else {
+			// Сохраняем клиент для возможного управления
+			elkClient = client
+
+			// Получаем хендлер от клиента
+			esHandler := client.GetHandler()
+			if esHandler != nil {
+				// Комбинируем хендлеры
+				baseHandler = newMultiHandler(baseHandler, esHandler)
+			}
+		}
+	}
+
+	return slog.New(baseHandler)
+}
+
+// CloseELK - закрывает соединение с Elasticsearch (вызывать при завершении)
+func CloseELK() error {
+	if elkClient != nil {
+		return elkClient.Close()
+	}
+	return nil
+}
+
+// GetELKClient - возвращает клиент Elasticsearch (для прямого использования)
+func GetELKClient() *elk.Client {
+	return elkClient
 }
 
 // NewLogger - упрощенный конструктор (для локальной разработки и тестов)
