@@ -1,11 +1,14 @@
 package logger
 
+import "pkg/elk"
+
 // LoggerConfig - конфигурация логгера
 type LoggerConfig struct {
-	Level     string `yaml:"level" json:"level"`           // debug, info, warn, error
-	Format    string `yaml:"format" json:"format"`         // json, text
-	AddSource bool   `yaml:"add_source" json:"add_source"` // добавлять файл:строку
-	Service   string `yaml:"service" json:"service"`       // имя микросервиса
+	Level     string      `yaml:"level" json:"level"`           // debug, info, warn, error
+	Format    string      `yaml:"format" json:"format"`         // json, text
+	AddSource bool        `yaml:"add_source" json:"add_source"` // добавлять файл:строку
+	Service   string      `yaml:"service" json:"service"`       // имя микросервиса
+	Elk       *elk.Config `yaml:"elk" json:"elk"`               // конфигурация Elasticsearch
 }
 
 // DefaultLoggerConfig - дефолтная конфигурация логгера
@@ -15,5 +18,6 @@ func DefaultLoggerConfig() *LoggerConfig {
 		Format:    "json",
 		AddSource: true,
 		Service:   "unknown",
+		Elk:       elk.DefaultConfig(),
 	}
 }
